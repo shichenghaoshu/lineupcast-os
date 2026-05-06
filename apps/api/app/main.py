@@ -7,6 +7,7 @@ from src.mock_data import PROVIDERS
 
 from .config import Settings, get_settings
 from . import services
+from .leagues import get_leagues, get_league_by_id
 from .schemas import (
     BacktestResponse,
     HealthResponse,
@@ -223,6 +224,18 @@ def register_routes(api: FastAPI) -> None:
     @api.get("/api/matches/{match_id}/overlay", response_model=OverlayLayout)
     async def get_match_overlay(match_id: str) -> OverlayLayout:
         return services.overlay(match_id)
+
+    @api.get("/api/leagues")
+    async def list_leagues() -> list[dict]:
+        return get_leagues()
+
+    @api.get("/api/leagues/{league_id}")
+    async def get_league(league_id: str) -> dict:
+        league = get_league_by_id(league_id)
+        if not league:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"League '{league_id}' not found")
+        return league
 
 
 app = create_app()

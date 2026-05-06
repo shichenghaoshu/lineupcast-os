@@ -1,4 +1,4 @@
-import type { Player, Match, Prediction, DataProvider } from "./types";
+import type { Player, Match, Prediction, DataProvider, H2HRecord, FormEntry, League } from "./types";
 
 export const manchesterRedXI: Player[] = [
   {
@@ -315,4 +315,52 @@ export const trendData = [
   { match: "MD30", rating: 7.4, xG: 1.8, result: "W" },
   { match: "MD31", rating: 7.0, xG: 1.2, result: "D" },
   { match: "MD32", rating: 7.3, xG: 1.6, result: "W" },
+];
+
+export const h2hRecord: H2HRecord = {
+  matches: [
+    { date: "2026-04-12", homeTeam: "Manchester Red", awayTeam: "Shanghai Harbor", homeScore: 2, awayScore: 1, venue: "Red Stadium", competition: "Club Friendly" },
+    { date: "2025-11-20", homeTeam: "Shanghai Harbor", awayTeam: "Manchester Red", homeScore: 1, awayScore: 1, venue: "Harbor Arena", competition: "Club Friendly" },
+    { date: "2025-07-08", homeTeam: "Manchester Red", awayTeam: "Shanghai Harbor", homeScore: 3, awayScore: 0, venue: "Red Stadium", competition: "Summer Cup" },
+    { date: "2025-02-15", homeTeam: "Shanghai Harbor", awayTeam: "Manchester Red", homeScore: 2, awayScore: 2, venue: "Harbor Arena", competition: "Club Friendly" },
+    { date: "2024-12-01", homeTeam: "Manchester Red", awayTeam: "Shanghai Harbor", homeScore: 1, awayScore: 0, venue: "Red Stadium", competition: "Winter Trophy" },
+    { date: "2024-08-18", homeTeam: "Shanghai Harbor", awayTeam: "Manchester Red", homeScore: 0, awayScore: 2, venue: "Harbor Arena", competition: "Club Friendly" },
+  ],
+  homeWins: 3,
+  draws: 2,
+  awayWins: 1,
+  homeGoals: 9,
+  awayGoals: 4,
+};
+
+export const homeForm: FormEntry[] = [
+  { matchId: "f1", date: "2026-04-28", opponent: "London Blues", isHome: true, result: "W", goalsFor: 2, goalsAgainst: 0, xG: 1.8, xGA: 0.6, venue: "Red Stadium" },
+  { matchId: "f2", date: "2026-04-21", opponent: "Berlin Eagles", isHome: false, result: "W", goalsFor: 3, goalsAgainst: 1, xG: 2.1, xGA: 1.2, venue: "Eagle Arena" },
+  { matchId: "f3", date: "2026-04-14", opponent: "Madrid Lions", isHome: true, result: "W", goalsFor: 1, goalsAgainst: 0, xG: 1.4, xGA: 0.8, venue: "Red Stadium" },
+  { matchId: "f4", date: "2026-04-07", opponent: "Paris Stars", isHome: false, result: "D", goalsFor: 1, goalsAgainst: 1, xG: 1.1, xGA: 1.3, venue: "Star Park" },
+  { matchId: "f5", date: "2026-03-30", opponent: "Milan Knights", isHome: true, result: "L", goalsFor: 0, goalsAgainst: 2, xG: 0.9, xGA: 1.7, venue: "Red Stadium" },
+  { matchId: "f6", date: "2026-03-23", opponent: "Rome Wolves", isHome: false, result: "W", goalsFor: 2, goalsAgainst: 1, xG: 1.6, xGA: 0.9, venue: "Wolf Den" },
+  { matchId: "f7", date: "2026-03-16", opponent: "Amsterdam Oranges", isHome: true, result: "D", goalsFor: 2, goalsAgainst: 2, xG: 1.9, xGA: 1.5, venue: "Red Stadium" },
+  { matchId: "f8", date: "2026-03-09", opponent: "Lisbon Waves", isHome: false, result: "W", goalsFor: 1, goalsAgainst: 0, xG: 1.2, xGA: 0.7, venue: "Wave Stadium" },
+];
+
+export const awayForm: FormEntry[] = [
+  { matchId: "af1", date: "2026-04-27", opponent: "Beijing Dragons", isHome: true, result: "W", goalsFor: 3, goalsAgainst: 1, xG: 2.4, xGA: 1.0, venue: "Harbor Arena" },
+  { matchId: "af2", date: "2026-04-20", opponent: "Guangzhou Tigers", isHome: false, result: "D", goalsFor: 1, goalsAgainst: 1, xG: 1.2, xGA: 1.1, venue: "Tiger Stadium" },
+  { matchId: "af3", date: "2026-04-13", opponent: "Shenzhen Phoenix", isHome: true, result: "W", goalsFor: 2, goalsAgainst: 0, xG: 1.9, xGA: 0.5, venue: "Harbor Arena" },
+  { matchId: "af4", date: "2026-04-06", opponent: "Chengdu Pandas", isHome: false, result: "L", goalsFor: 0, goalsAgainst: 1, xG: 0.8, xGA: 1.4, venue: "Panda Park" },
+  { matchId: "af5", date: "2026-03-30", opponent: "Wuhan Warriors", isHome: true, result: "W", goalsFor: 4, goalsAgainst: 2, xG: 3.1, xGA: 1.8, venue: "Harbor Arena" },
+  { matchId: "af6", date: "2026-03-23", opponent: "Tianjin Lions", isHome: false, result: "D", goalsFor: 0, goalsAgainst: 0, xG: 0.6, xGA: 0.9, venue: "Lion Den" },
+  { matchId: "af7", date: "2026-03-16", opponent: "Dalian Whales", isHome: true, result: "W", goalsFor: 2, goalsAgainst: 1, xG: 1.7, xGA: 1.2, venue: "Harbor Arena" },
+  { matchId: "af8", date: "2026-03-09", opponent: "Hangzhou Leopards", isHome: false, result: "W", goalsFor: 1, goalsAgainst: 0, xG: 1.0, xGA: 0.8, venue: "Leopard Ground" },
+];
+
+export const leagues: League[] = [
+  { id: "premier-league", name: "Premier League", shortName: "EPL", country: "England", countryFlag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", season: "2025-26", isActive: true },
+  { id: "la-liga", name: "La Liga", shortName: "LL", country: "Spain", countryFlag: "🇪🇸", season: "2025-26", isActive: true },
+  { id: "bundesliga", name: "Bundesliga", shortName: "BL", country: "Germany", countryFlag: "🇩🇪", season: "2025-26", isActive: true },
+  { id: "serie-a", name: "Serie A", shortName: "SA", country: "Italy", countryFlag: "🇮🇹", season: "2025-26", isActive: true },
+  { id: "ligue-1", name: "Ligue 1", shortName: "L1", country: "France", countryFlag: "🇫🇷", season: "2025-26", isActive: true },
+  { id: "chinese-super-league", name: "Chinese Super League", shortName: "CSL", country: "China", countryFlag: "🇨🇳", season: "2025", isActive: true },
+  { id: "champions-league", name: "UEFA Champions League", shortName: "UCL", country: "Europe", countryFlag: "🇪🇺", season: "2025-26", isActive: true },
 ];

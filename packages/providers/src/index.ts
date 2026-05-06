@@ -15,3 +15,9 @@ export {
   listReadyProviders,
   registerProvider,
 } from "./registry.js";
+export {
+  RateLimiter,
+  FOOTBALL_DATA_ORG_LIMITER,
+  API_FOOTBALL_LIMITER,
+  OPEN_FOOTBALL_LIMITER,
+} from "./rate-limiter.js";

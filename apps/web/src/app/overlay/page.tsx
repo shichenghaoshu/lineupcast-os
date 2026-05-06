@@ -1,31 +1,38 @@
 "use client";
 
+import { useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { OverlayPreview } from "@/components/OverlayPreview";
-import { manchesterRedXI } from "@/lib/mock-data";
-import { Monitor, Copy, ExternalLink } from "lucide-react";
+import { manchesterRedXI, currentMatch } from "@/lib/mock-data";
+import { Monitor, Copy, ExternalLink, Download, Image, Check } from "lucide-react";
 
 export default function OverlayPage() {
   const topScorer = manchesterRedXI.find((p) => p.id === "finish-st")!;
+  const [copied, setCopied] = useState(false);
+  const obsUrl = `/api/overlay/${currentMatch.id}?scene=lineup`;
+
+  function handleCopyUrl() {
+    navigator.clipboard.writeText(window.location.origin + obsUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="min-h-screen">
       <TopBar title="OBS Output / 直播输出" subtitle="实时图形输出配置" />
 
-      <div className="grid grid-cols-12 gap-4 p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6">
         {/* Previews */}
-        <div className="col-span-8 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="lg:col-span-8 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 16:9 Preview */}
             <OverlayPreview aspect="16:9" label="Broadcast Scene 16:9">
               <div className="flex h-full w-full flex-col justify-between p-4">
-                {/* Top bar */}
                 <div className="flex items-center justify-between rounded bg-black/60 px-4 py-2">
                   <span className="text-sm font-bold text-white">Manchester Red</span>
                   <span className="text-xs text-white/70">VS</span>
                   <span className="text-sm font-bold text-white">Shanghai Harbor</span>
                 </div>
-                {/* Prediction strip */}
                 <div className="flex items-center gap-2 rounded bg-black/60 px-3 py-1.5">
                   <span className="text-[10px] text-white/60">胜率</span>
                   <div className="flex flex-1 gap-1">
@@ -57,12 +64,28 @@ export default function OverlayPage() {
             </OverlayPreview>
           </div>
 
+          {/* Export Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button className="flex items-center gap-2 rounded-md bg-[var(--accent-green)]/15 px-3 py-2 text-xs font-medium text-[var(--accent-green)] transition-colors hover:bg-[var(--accent-green)]/25">
+              <Download className="h-3.5 w-3.5" />
+              Export PNG (16:9)
+            </button>
+            <button className="flex items-center gap-2 rounded-md bg-[var(--accent-blue)]/15 px-3 py-2 text-xs font-medium text-[var(--accent-blue)] transition-colors hover:bg-[var(--accent-blue)]/25">
+              <Image className="h-3.5 w-3.5" />
+              Export SVG
+            </button>
+            <button className="flex items-center gap-2 rounded-md bg-[var(--accent-purple)]/15 px-3 py-2 text-xs font-medium text-[var(--accent-purple)] transition-colors hover:bg-[var(--accent-purple)]/25">
+              <Download className="h-3.5 w-3.5" />
+              Export All Scenes
+            </button>
+          </div>
+
           {/* Lineup graphic preview */}
           <div className="card space-y-3">
             <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
               Lineup Graphic / 阵容图形预览
             </div>
-            <div className="flex items-center gap-6 rounded bg-[var(--bg-primary)] p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 rounded bg-[var(--bg-primary)] p-4">
               <div className="flex flex-col items-center gap-1">
                 <div className="text-sm font-bold">Manchester Red</div>
                 <div className="text-xs text-[var(--text-muted)]">4-2-3-1</div>
@@ -108,7 +131,7 @@ export default function OverlayPage() {
         </div>
 
         {/* Right: Config */}
-        <div className="col-span-4 space-y-4">
+        <div className="lg:col-span-4 space-y-4">
           <div className="card space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Monitor className="h-4 w-4 text-[var(--accent-blue)]" />
@@ -135,14 +158,17 @@ export default function OverlayPage() {
           <div className="card space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <ExternalLink className="h-4 w-4 text-[var(--accent-green)]" />
-              JSON Webhook
+              OBS Browser Source
             </div>
             <div className="rounded bg-[var(--bg-primary)] p-2 font-mono text-[10px] text-[var(--text-secondary)] break-all">
-              http://localhost:3000/api/overlay/webhook
+              {obsUrl}
             </div>
-            <button className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]">
-              <Copy className="h-3 w-3" />
-              复制 Webhook URL
+            <button
+              onClick={handleCopyUrl}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
+            >
+              {copied ? <Check className="h-3 w-3 text-[var(--accent-green)]" /> : <Copy className="h-3 w-3" />}
+              {copied ? "已复制!" : "复制 Browser Source URL"}
             </button>
           </div>
 

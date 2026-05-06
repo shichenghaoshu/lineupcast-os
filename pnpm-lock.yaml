@@ -19,6 +19,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@lineupcast/overlay-renderer':
+        specifier: workspace:*
+        version: link:../../packages/overlay-renderer
       '@lineupcast/schema':
         specifier: workspace:*
         version: link:../../packages/schema

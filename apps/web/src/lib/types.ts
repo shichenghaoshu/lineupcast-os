@@ -51,3 +51,45 @@ export interface DataProvider {
   lastSync: string | null;
   fields: string[];
 }
+
+export interface H2HMatch {
+  date: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  venue: string;
+  competition: string;
+}
+
+export interface H2HRecord {
+  matches: H2HMatch[];
+  homeWins: number;
+  draws: number;
+  awayWins: number;
+  homeGoals: number;
+  awayGoals: number;
+}
+
+export interface FormEntry {
+  matchId: string;
+  date: string;
+  opponent: string;
+  isHome: boolean;
+  result: "W" | "D" | "L";
+  goalsFor: number;
+  goalsAgainst: number;
+  xG: number;
+  xGA: number;
+  venue: string;
+}
+
+export interface League {
+  id: string;
+  name: string;
+  shortName: string;
+  country: string;
+  countryFlag: string;
+  season: string;
+  isActive: boolean;
+}

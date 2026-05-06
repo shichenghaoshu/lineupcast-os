@@ -43,6 +43,9 @@ from .schemas import (
     TeamDetail,
 )
 
+from .script_bridge import call_script_generator
+from .prediction_bridge import call_prediction_engine
+
 
 MATCHES: dict[str, dict] = {MATCH_DEMO["matchId"]: MATCH_DEMO.copy()}
 SCRIPTS: dict[str, ScriptResponse] = {}
@@ -154,6 +157,50 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
     if match_id != PREDICTION["matchId"]:
         _not_found("Prediction for match", match_id)
 
+    # ── Try the real prediction bridge first ──────────────────────────────
+    match = MATCHES.get(match_id)
+    if match is not None:
+        bridge_input = {
+            "matchId": match_id,
+            "homeTeam": match.get("homeTeam", {}),
+            "awayTeam": match.get("awayTeam", {}),
+            "matchStats": PREDICTION.get("inputFeatures", {}),
+            "lineups": LINEUPS.get(match_id, {}),
+        }
+        bridge_result = call_prediction_engine(bridge_input)
+        if bridge_result is not None:
+            return PredictionResponse(
+                matchId=match_id,
+                homeWin=bridge_result.get("homeWin", PREDICTION["homeWin"]),
+                draw=bridge_result.get("draw", PREDICTION["draw"]),
+                awayWin=bridge_result.get("awayWin", PREDICTION["awayWin"]),
+                expectedHomeGoals=bridge_result.get("expectedHomeGoals", PREDICTION["expectedHomeGoals"]),
+                expectedAwayGoals=bridge_result.get("expectedAwayGoals", PREDICTION["expectedAwayGoals"]),
+                modelName=bridge_result.get("modelName", settings.prediction_model_name),
+                modelVersion=bridge_result.get("modelVersion", settings.prediction_model_version),
+                confidence=bridge_result.get("confidence", PREDICTION["confidence"]),
+                explanation=bridge_result.get("explanation", " ".join(PREDICTION["explanations"])),
+                references=_references(),
+                goalScorers=[
+                    GoalScorer(**gs) for gs in bridge_result.get("goalScorers", PREDICTION["goalScorers"])
+                ],
+                cardRisks=[
+                    CardRisk(
+                        player=cr.get("player", ""),
+                        team=cr.get("team", ""),
+                        yellowRisk=cr.get("yellowRisk", 0),
+                        redRisk=cr.get("redRisk", cr.get("redCardRisk", 0)),
+                        redCardRisk=cr.get("redCardRisk", cr.get("redRisk", 0)),
+                    )
+                    for cr in bridge_result.get("cardRisks", PREDICTION["cardRisks"])
+                ],
+                generatedAt=now_utc(),
+                inputFeatures=bridge_result.get("inputFeatures", PREDICTION["inputFeatures"]),
+                models=[PredictionModelInfo(**m) for m in bridge_result.get("models", PREDICTION["models"])],
+                explanations=bridge_result.get("explanations", PREDICTION["explanations"]),
+            )
+
+    # ── Fallback to mock data ─────────────────────────────────────────────
     return PredictionResponse(
         matchId=match_id,
         homeWin=PREDICTION["homeWin"],
@@ -225,11 +272,152 @@ def _script_body(language: ScriptLanguage, prediction: PredictionResponse) -> tu
     return "Pre-match briefing", line_en
 
 
+_VALID_STYLES = {"professional", "short-video", "passionate", "neutral", "broadcast"}
+
+
+def _map_confidence(confidence: float | str) -> str:
+    """Map a numeric confidence (0-1) to the TS ``confidence`` enum string."""
+    if isinstance(confidence, str):
+        return confidence if confidence in ("low", "medium", "high") else "medium"
+    if confidence >= 0.8:
+        return "high"
+    if confidence >= 0.5:
+        return "medium"
+    return "low"
+
+
+def _map_red_risk(risk: str) -> float:
+    """Convert a string red-card risk level to a numeric probability."""
+    return {"low": 0.05, "medium": 0.15, "high": 0.30}.get(risk, 0.05)
+
+
+def _build_script_input(
+    match_id: str,
+    match: dict,
+    raw_prediction: dict,
+    payload: ScriptGenerateRequest,
+) -> dict | None:
+    """Build a ``ScriptGenerationInput`` dict for the TS package.
+
+    Returns ``None`` when required data (e.g. lineups) is unavailable.
+    """
+    lineup = LINEUPS.get(match_id)
+    if not lineup:
+        return None
+
+    home_team = match.get("homeTeam", {})
+    away_team = match.get("awayTeam", {})
+    competition = match.get("competition", "")
+    style = payload.tone if payload.tone in _VALID_STYLES else "broadcast"
+    language = (
+        payload.language.value
+        if hasattr(payload.language, "value")
+        else str(payload.language)
+    )
+
+    return {
+        "match": {
+            "id": match_id,
+            "homeTeamId": home_team.get("teamId", ""),
+            "awayTeamId": away_team.get("teamId", ""),
+            "homeTeam": {
+                "id": home_team.get("teamId", ""),
+                "name": home_team.get("name", ""),
+                "shortName": home_team.get("shortName", ""),
+                "league": competition,
+            },
+            "awayTeam": {
+                "id": away_team.get("teamId", ""),
+                "name": away_team.get("name", ""),
+                "shortName": away_team.get("shortName", ""),
+                "league": competition,
+            },
+            "kickoff": match.get("kickoff", ""),
+            "league": competition,
+            "status": match.get("status", "scheduled"),
+        },
+        "lineups": lineup,
+        "prediction": {
+            "matchId": raw_prediction.get("matchId", match_id),
+            "homeWin": raw_prediction.get("homeWin", 50) / 100,
+            "draw": raw_prediction.get("draw", 25) / 100,
+            "awayWin": raw_prediction.get("awayWin", 25) / 100,
+            "expectedHomeGoals": raw_prediction.get("expectedHomeGoals", 1.5),
+            "expectedAwayGoals": raw_prediction.get("expectedAwayGoals", 1.0),
+            "confidence": _map_confidence(raw_prediction.get("confidence", 0.5)),
+        },
+        "goalScorers": [
+            {
+                "player": gs.get("player", ""),
+                "team": gs.get("team", ""),
+                "probability": gs.get("probability", 0),
+            }
+            for gs in raw_prediction.get("goalScorers", [])
+        ],
+        "cardRisks": [
+            {
+                "player": cr.get("player", ""),
+                "team": cr.get("team", ""),
+                "yellowRisk": cr.get("yellowRisk", 0),
+                "redRisk": _map_red_risk(cr.get("redRisk", "low")),
+            }
+            for cr in raw_prediction.get("cardRisks", [])
+        ],
+        "style": style,
+        "duration": "30s",
+        "language": language,
+    }
+
+
+def _bridge_title(language: ScriptLanguage) -> str:
+    """Generate a human-readable title for bridge-generated scripts."""
+    if language == ScriptLanguage.zh:
+        return "赛前预测口播"
+    if language == ScriptLanguage.bilingual:
+        return "Pre-match briefing / 赛前预测口播"
+    return "Pre-match briefing"
+
+
 def generate_script(
     settings: Settings, match_id: str, payload: ScriptGenerateRequest
 ) -> ScriptResponse:
     started = perf_counter()
     prediction = get_prediction(settings, match_id)
+
+    # ── Try the real ai-script bridge first ──────────────────────────────
+    match = MATCHES.get(match_id)
+    if match is not None:
+        script_input = _build_script_input(match_id, match, PREDICTION, payload)
+        if script_input is not None:
+            bridge_result = call_script_generator(script_input)
+            if bridge_result is not None:
+                latency_ms = max(1, int((perf_counter() - started) * 1000))
+                teleprompter = bridge_result.get("teleprompterText", "")
+                script_response = ScriptResponse(
+                    scriptId=f"script_{uuid4().hex[:12]}",
+                    matchId=match_id,
+                    language=payload.language,
+                    title=_bridge_title(payload.language),
+                    script=teleprompter,
+                    provider="lineupcast-ai-script",
+                    model=(
+                        f"{settings.script_model_name}"
+                        f"@{settings.script_model_version}"
+                    ),
+                    latencyMs=latency_ms,
+                    fallback=False,
+                    status="generated",
+                    generatedAt=now_utc(),
+                    disclaimer=(
+                        "DISCLAIMER: Generated from deterministic mock "
+                        "demonstration data. Not for betting, scouting, "
+                        "or professional match operations."
+                    ),
+                )
+                SCRIPTS[script_response.scriptId] = script_response
+                return script_response
+
+    # ── Fallback to deterministic template ───────────────────────────────
     title, script = _script_body(payload.language, prediction)
     latency_ms = max(1, int((perf_counter() - started) * 1000))
     script_response = ScriptResponse(

@@ -6,11 +6,15 @@ import { MetricCard } from "@/components/MetricCard";
 import { PredictionCard } from "@/components/PredictionCard";
 import { FormationPitch } from "@/components/FormationPitch";
 import { PlayerCard } from "@/components/PlayerCard";
+import { H2HExplorer } from "@/components/H2HExplorer";
+import { FormTracker } from "@/components/FormTracker";
 import {
   currentMatch,
   manchesterRedXI,
   matchPrediction,
   trendData,
+  h2hRecord,
+  homeForm,
 } from "@/lib/mock-data";
 import {
   Users,
@@ -34,12 +38,12 @@ export default function DashboardPage() {
     <div className="min-h-screen">
       <TopBar title="数据驾驶舱" subtitle="Manchester Red vs Shanghai Harbor" />
 
-      <div className="space-y-4 p-6">
+      <div className="space-y-4 p-4 md:p-6">
         {/* Match Header */}
         <MatchHeader match={currentMatch} />
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <MetricCard
             label="Lineup Integrity / 阵容完整度"
             value="86"
@@ -75,9 +79,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Grid */}
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left: Formation + AI Summary */}
-          <div className="col-span-4 space-y-4">
+          <div className="lg:col-span-4 space-y-4">
             <div className="card">
               <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 阵容预览 · 4-2-3-1
@@ -95,10 +99,16 @@ export default function DashboardPage() {
                 黄牌风险42%。Dixon-Coles模型预测主队胜率48%，阵容调整后置信度提升至72%。
               </p>
             </div>
+
+            <H2HExplorer
+              record={h2hRecord}
+              homeTeam="Manchester Red"
+              awayTeam="Shanghai Harbor"
+            />
           </div>
 
           {/* Center: Prediction + Trend */}
-          <div className="col-span-5 space-y-4">
+          <div className="lg:col-span-5 space-y-4">
             <PredictionCard
               homeWin={matchPrediction.homeWin}
               draw={matchPrediction.draw}
@@ -173,10 +183,12 @@ export default function DashboardPage() {
                 <div className="text-xs text-[var(--text-muted)]">Shanghai Harbor</div>
               </div>
             </div>
+
+            <FormTracker form={homeForm} teamName="Manchester Red" />
           </div>
 
           {/* Right: Key Players */}
-          <div className="col-span-3 space-y-4">
+          <div className="lg:col-span-3 space-y-4">
             <div className="card">
               <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 关键球员

@@ -9,8 +9,8 @@ interface TopBarProps {
 
 export function TopBar({ title, subtitle }: TopBarProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-6">
-      <div>
+    <header className="flex h-14 items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 md:px-6">
+      <div className="pl-12 md:pl-0">
         <h1 className="text-base font-semibold">{title}</h1>
         {subtitle && (
           <p className="text-xs text-[var(--text-muted)]">{subtitle}</p>

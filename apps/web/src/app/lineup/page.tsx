@@ -28,9 +28,9 @@ export default function LineupPage() {
         subtitle={`Manchester Red ${formation} vs Shanghai Harbor 4-3-3`}
       />
 
-      <div className="grid grid-cols-12 gap-4 p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6">
         {/* Formation selector */}
-        <div className="col-span-12 flex items-center gap-3">
+        <div className="lg:col-span-12 flex items-center gap-3">
           <span className="text-xs text-[var(--text-muted)]">阵型:</span>
           {(["4-2-3-1", "4-3-3"] as const).map((f) => (
             <button
@@ -48,14 +48,14 @@ export default function LineupPage() {
         </div>
 
         {/* Tactical pitch */}
-        <div className="col-span-7">
+        <div className="lg:col-span-7">
           <div className="card">
             <FormationPitch players={starters} formation={formation} />
           </div>
         </div>
 
         {/* Side lists */}
-        <div className="col-span-5 space-y-4">
+        <div className="lg:col-span-5 space-y-4">
           <div className="card space-y-2">
             <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
               Tactical Insights / 战术洞察
