@@ -88,13 +88,13 @@ LineupCast OS is an **educational and analytical tool**. It is not a betting ser
 
 ## Roadmap
 
-- [ ] Core match dashboard with form and H2H views
-- [ ] xG-Poisson prediction model v1
-- [ ] AI script generation from match stats
-- [ ] Overlay renderer for broadcast graphics
-- [ ] Live data provider integrations
-- [ ] Mobile-responsive layout
-- [ ] Multi-league support
+- [x] Core match dashboard with form and H2H views
+- [x] xG-Poisson prediction model v1
+- [x] AI script generation from match stats
+- [x] Overlay renderer for broadcast graphics
+- [x] Live data provider integrations
+- [x] Mobile-responsive layout
+- [x] Multi-league support
 
 ## Contributing
 
