@@ -1,0 +1,21 @@
+{
+  "name": "lineupcast-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source football pre-match commentary data cockpit",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @lineupcast/web dev",
+    "dev:api": "pnpm --filter @lineupcast/api dev",
+    "lint": "pnpm -r --parallel run lint",
+    "typecheck": "pnpm -r --parallel run typecheck",
+    "test": "pnpm -r --parallel run test",
+    "build": "pnpm -r run build",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,428 @@
+"""Deterministic service layer backed by local mock data."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from time import perf_counter
+from uuid import uuid4
+
+from fastapi import HTTPException
+
+from src.mock_data import LINEUPS, MATCH_DEMO, PLAYERS_DB, PREDICTION, PROVIDERS, TEAMS
+
+from .config import Settings
+from .schemas import (
+    BacktestResponse,
+    CardRisk,
+    GoalScorer,
+    LineupRefreshResponse,
+    MatchImportRequest,
+    MatchLineups,
+    MatchSummary,
+    ModelBacktestRequest,
+    ModelCard,
+    ModelEvaluation,
+    ModelInfo,
+    ModelReference,
+    PredictionModelInfo,
+    OverlayLayout,
+    OverlayZone,
+    Player,
+    PredictionExplainResponse,
+    PredictionResponse,
+    ProviderLog,
+    ProviderSyncResponse,
+    ProviderTestRequest,
+    ProviderTestResponse,
+    ReadinessComponent,
+    ReadinessResponse,
+    ScriptGenerateRequest,
+    ScriptLanguage,
+    ScriptResponse,
+    ScriptTranslateRequest,
+    TeamDetail,
+)
+
+
+MATCHES: dict[str, dict] = {MATCH_DEMO["matchId"]: MATCH_DEMO.copy()}
+SCRIPTS: dict[str, ScriptResponse] = {}
+
+
+def now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def _not_found(resource: str, resource_id: str) -> None:
+    raise HTTPException(status_code=404, detail=f"{resource} '{resource_id}' not found")
+
+
+def _player_with_id(player_id: str, player: dict) -> Player:
+    return Player(playerId=player_id, **player)
+
+
+def list_matches() -> list[MatchSummary]:
+    return [MatchSummary(**match) for match in MATCHES.values()]
+
+
+def get_match(match_id: str) -> MatchSummary:
+    match = MATCHES.get(match_id)
+    if not match:
+        _not_found("Match", match_id)
+    return MatchSummary(**match)
+
+
+def import_match(payload: MatchImportRequest) -> MatchSummary:
+    home = TEAMS.get(payload.homeTeamId)
+    away = TEAMS.get(payload.awayTeamId)
+    if not home:
+        _not_found("Team", payload.homeTeamId)
+    if not away:
+        _not_found("Team", payload.awayTeamId)
+
+    match_id = payload.matchId or f"{payload.homeTeamId}-vs-{payload.awayTeamId}"
+    match = {
+        "matchId": match_id,
+        "competition": payload.competition,
+        "kickoff": payload.kickoff,
+        "status": "scheduled",
+        "homeTeam": {
+            "teamId": home["teamId"],
+            "name": home["name"],
+            "shortName": home["shortName"],
+            "crest": home.get("crest"),
+        },
+        "awayTeam": {
+            "teamId": away["teamId"],
+            "name": away["name"],
+            "shortName": away["shortName"],
+            "crest": away.get("crest"),
+        },
+        "score": None,
+    }
+    MATCHES[match_id] = match
+    return MatchSummary(**match)
+
+
+def get_team(team_id: str) -> TeamDetail:
+    team = TEAMS.get(team_id)
+    if not team:
+        _not_found("Team", team_id)
+    return TeamDetail(**team)
+
+
+def get_player(player_id: str) -> Player:
+    player = PLAYERS_DB.get(player_id)
+    if not player:
+        _not_found("Player", player_id)
+    return _player_with_id(player_id, player)
+
+
+def get_lineups(match_id: str) -> MatchLineups:
+    lineup = LINEUPS.get(match_id)
+    if not lineup:
+        _not_found("Lineups for match", match_id)
+    return MatchLineups(**lineup)
+
+
+def refresh_lineups(match_id: str) -> LineupRefreshResponse:
+    get_lineups(match_id)
+    return LineupRefreshResponse(
+        matchId=match_id,
+        status="refreshed",
+        provider="mock-fixture-feed",
+        refreshedAt=now_utc(),
+    )
+
+
+def get_match_players(match_id: str) -> list[Player]:
+    lineup = get_lineups(match_id)
+    players: list[Player] = []
+    for stored_id, stored in PLAYERS_DB.items():
+        if stored["teamId"] in {lineup.home.teamId, lineup.away.teamId}:
+            players.append(_player_with_id(stored_id, stored))
+    return players
+
+
+def _references() -> list[ModelReference]:
+    return [
+        ModelReference(title=model["name"], url=model["reference"])
+        for model in PREDICTION["models"]
+    ]
+
+
+def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
+    if match_id != PREDICTION["matchId"]:
+        _not_found("Prediction for match", match_id)
+
+    return PredictionResponse(
+        matchId=match_id,
+        homeWin=PREDICTION["homeWin"],
+        draw=PREDICTION["draw"],
+        awayWin=PREDICTION["awayWin"],
+        expectedHomeGoals=PREDICTION["expectedHomeGoals"],
+        expectedAwayGoals=PREDICTION["expectedAwayGoals"],
+        modelName=settings.prediction_model_name,
+        modelVersion=settings.prediction_model_version,
+        confidence=PREDICTION["confidence"],
+        explanation=" ".join(PREDICTION["explanations"]),
+        references=_references(),
+        goalScorers=[GoalScorer(**item) for item in PREDICTION["goalScorers"]],
+        cardRisks=[
+            CardRisk(
+                player=item["player"],
+                team=item["team"],
+                yellowRisk=item["yellowRisk"],
+                redRisk=item["redRisk"],
+                redCardRisk=item["redRisk"],
+            )
+            for item in PREDICTION["cardRisks"]
+        ],
+        generatedAt=now_utc(),
+        inputFeatures=PREDICTION["inputFeatures"],
+        models=[PredictionModelInfo(**item) for item in PREDICTION["models"]],
+        explanations=PREDICTION["explanations"],
+    )
+
+
+def explain_prediction(settings: Settings, match_id: str) -> PredictionExplainResponse:
+    prediction = get_prediction(settings, match_id)
+    return PredictionExplainResponse(
+        matchId=match_id,
+        modelName=prediction.modelName,
+        modelVersion=prediction.modelVersion,
+        factors=PREDICTION["explanations"],
+        references=prediction.references,
+    )
+
+
+def backtest_prediction(match_id: str) -> BacktestResponse:
+    get_match(match_id)
+    return BacktestResponse(
+        matchId=match_id,
+        sampleSize=240,
+        accuracy=0.68,
+        brierScore=0.19,
+        calibration="well-calibrated on mock friendly fixtures",
+    )
+
+
+def _script_body(language: ScriptLanguage, prediction: PredictionResponse) -> tuple[str, str]:
+    line_en = (
+        f"{prediction.modelName} gives the home side a {prediction.homeWin}% win "
+        f"chance, with projected xG {prediction.expectedHomeGoals:.1f} to "
+        f"{prediction.expectedAwayGoals:.1f}. Watch {prediction.goalScorers[0].player} "
+        "as the leading scorer candidate."
+    )
+    line_zh = (
+        f"{prediction.modelName} 认为主队胜率为 {prediction.homeWin}%，预计 xG 为 "
+        f"{prediction.expectedHomeGoals:.1f} 比 {prediction.expectedAwayGoals:.1f}。"
+        f"重点关注 {prediction.goalScorers[0].player} 的进球威胁。"
+    )
+    if language == ScriptLanguage.zh:
+        return "赛前预测口播", line_zh
+    if language == ScriptLanguage.bilingual:
+        return "Pre-match briefing / 赛前预测口播", f"{line_en}\n\n{line_zh}"
+    return "Pre-match briefing", line_en
+
+
+def generate_script(
+    settings: Settings, match_id: str, payload: ScriptGenerateRequest
+) -> ScriptResponse:
+    started = perf_counter()
+    prediction = get_prediction(settings, match_id)
+    title, script = _script_body(payload.language, prediction)
+    latency_ms = max(1, int((perf_counter() - started) * 1000))
+    script_response = ScriptResponse(
+        scriptId=f"script_{uuid4().hex[:12]}",
+        matchId=match_id,
+        language=payload.language,
+        title=title,
+        script=script,
+        provider="mock-script-provider",
+        model=f"{settings.script_model_name}@{settings.script_model_version}",
+        latencyMs=latency_ms,
+        fallback=settings.provider_mode == "mock",
+        status="generated",
+        generatedAt=now_utc(),
+        disclaimer=(
+            "DISCLAIMER: Generated from deterministic mock demonstration data. "
+            "Not for betting, scouting, or professional match operations."
+        ),
+    )
+    SCRIPTS[script_response.scriptId] = script_response
+    return script_response
+
+
+def list_scripts(match_id: str) -> list[ScriptResponse]:
+    get_match(match_id)
+    scripts = [script for script in SCRIPTS.values() if script.matchId == match_id]
+    return sorted(scripts, key=lambda item: item.generatedAt, reverse=True)
+
+
+def translate_script(
+    settings: Settings, script_id: str, payload: ScriptTranslateRequest
+) -> ScriptResponse:
+    script = SCRIPTS.get(script_id)
+    if not script:
+        _not_found("Script", script_id)
+    translated = generate_script(
+        settings,
+        script.matchId,
+        ScriptGenerateRequest(language=payload.language, tone="translated"),
+    )
+    return translated.model_copy(update={"scriptId": script_id, "status": "translated"})
+
+
+def list_models(settings: Settings) -> list[ModelInfo]:
+    return [
+        ModelInfo(
+            modelId="lineupcast-ensemble",
+            name=settings.prediction_model_name,
+            version=settings.prediction_model_version,
+            provider="local-deterministic",
+            task="match-prediction",
+            status="ready",
+        ),
+        ModelInfo(
+            modelId="lineupcast-scriptwriter",
+            name=settings.script_model_name,
+            version=settings.script_model_version,
+            provider="local-deterministic",
+            task="script-generation",
+            status="ready",
+        ),
+    ]
+
+
+def get_model(settings: Settings, model_id: str) -> ModelInfo:
+    for model in list_models(settings):
+        if model.modelId == model_id:
+            return model
+    _not_found("Model", model_id)
+
+
+def get_model_card(settings: Settings, model_id: str) -> ModelCard:
+    model = get_model(settings, model_id)
+    return ModelCard(
+        modelId=model.modelId,
+        name=model.name,
+        intendedUse="Pre-match demonstration predictions and commentary drafts.",
+        limitations=[
+            "Uses mock data in this deployable service.",
+            "Not suitable for betting, professional scouting, or live match operations.",
+        ],
+        features=PREDICTION["inputFeatures"],
+    )
+
+
+def get_model_evaluation(settings: Settings, model_id: str) -> ModelEvaluation:
+    get_model(settings, model_id)
+    return ModelEvaluation(
+        modelId=model_id,
+        sampleSize=240,
+        accuracy=0.68,
+        brierScore=0.19,
+        lastEvaluatedAt=now_utc(),
+    )
+
+
+def backtest_model(settings: Settings, payload: ModelBacktestRequest) -> BacktestResponse:
+    get_model(settings, payload.modelId)
+    return BacktestResponse(
+        modelId=payload.modelId,
+        sampleSize=240,
+        accuracy=0.68,
+        brierScore=0.19,
+        calibration="mock backtest uses deterministic historical fixtures",
+    )
+
+
+def test_provider(payload: ProviderTestRequest) -> ProviderTestResponse:
+    provider_ids = {provider["id"] for provider in PROVIDERS}
+    if payload.providerId not in provider_ids:
+        _not_found("Provider", payload.providerId)
+    return ProviderTestResponse(
+        providerId=payload.providerId,
+        ok=True,
+        latencyMs=8,
+        detail="Provider mock check completed.",
+    )
+
+
+def sync_providers() -> ProviderSyncResponse:
+    return ProviderSyncResponse(
+        status="synced",
+        providerCount=len(PROVIDERS),
+        syncedAt=now_utc(),
+    )
+
+
+def provider_logs() -> list[ProviderLog]:
+    return [
+        ProviderLog(
+            providerId="mock-fixture-feed",
+            level="info",
+            message="Mock fixture feed ready.",
+            createdAt=now_utc(),
+        ),
+        ProviderLog(
+            providerId="lineupcast-xgboost",
+            level="info",
+            message="Deterministic model check passed.",
+            createdAt=now_utc(),
+        ),
+    ]
+
+
+def readiness(settings: Settings) -> ReadinessResponse:
+    external_ready = settings.provider_mode != "external" or bool(settings.provider_api_key)
+    return ReadinessResponse(
+        status="ready" if external_ready else "degraded",
+        provider=ReadinessComponent(
+            available=external_ready,
+            mode=settings.provider_mode,
+            detail="mock provider ready"
+            if settings.provider_mode == "mock"
+            else "external provider key configured"
+            if external_ready
+            else "external provider key missing",
+        ),
+        model=ReadinessComponent(
+            available=bool(settings.prediction_model_name),
+            mode="deterministic",
+            detail="model configured from environment",
+        ),
+    )
+
+
+def overlay(match_id: str) -> OverlayLayout:
+    get_match(match_id)
+    return OverlayLayout(
+        matchId=match_id,
+        zones={
+            "landscape_16x9": OverlayZone(
+                type="image",
+                width=1920,
+                height=1080,
+                description="16:9 pitch, lineups, team crests, and prediction bar.",
+            ),
+            "portrait_9x16": OverlayZone(
+                type="image",
+                width=1080,
+                height=1920,
+                description="9:16 stacked mobile story layout.",
+            ),
+            "lower_third": OverlayZone(
+                type="overlay",
+                width=1920,
+                height=200,
+                description="Lower-third team, formation, and prediction strip.",
+            ),
+            "prediction_strip": OverlayZone(
+                type="overlay",
+                width=1920,
+                height=120,
+                description="Horizontal win-probability and xG strip.",
+            ),
+        },
+    )

@@ -1,0 +1,157 @@
+// @lineupcast/ai-script — forbidden phrase blocking and cautious language enforcement
+
+import type { ScriptSections } from "./types";
+
+/**
+ * Phrases that must never appear in generated scripts.
+ * AI/LLM rewrites must not invent probabilities or absolute claims.
+ */
+const FORBIDDEN_PHRASES: readonly string[] = [
+  "稳赢",
+  "必进",
+  "一定红牌",
+  "必胜",
+  "肯定进球",
+  "guaranteed",
+] as const;
+
+/**
+ * Mapping of forbidden phrases to cautious replacements.
+ */
+const FORBIDDEN_REPLACEMENTS: Readonly<Record<string, string>> = {
+  稳赢: "概率上占优",
+  必进: "更值得关注的得分点",
+  一定红牌: "风险偏高",
+  必胜: "更被看好",
+  肯定进球: "有较高概率破门",
+  guaranteed: "model-estimated",
+};
+
+
+const MODEL_SOURCE_ZH = "根据 Dixon-Coles 与阵容修正模型";
+const MODEL_SOURCE_EN = "Based on Dixon-Coles with lineup adjustment model";
+
+/**
+ * Replace all forbidden phrases in text with cautious alternatives.
+ * Returns the sanitized text.
+ */
+export function sanitizeForbiddenPhrases(text: string): string {
+  let result = text;
+  for (const [forbidden, replacement] of Object.entries(FORBIDDEN_REPLACEMENTS)) {
+    // Case-insensitive replacement
+    const regex = new RegExp(escapeRegExp(forbidden), "gi");
+    result = result.replace(regex, replacement);
+  }
+  return result;
+}
+
+/**
+ * Check if text contains any forbidden phrases.
+ * Returns list of found forbidden phrases.
+ */
+export function detectForbiddenPhrases(text: string): string[] {
+  const found: string[] = [];
+  for (const phrase of FORBIDDEN_PHRASES) {
+    const regex = new RegExp(escapeRegExp(phrase), "gi");
+    if (regex.test(text)) {
+      found.push(phrase);
+    }
+  }
+  return found;
+}
+
+/**
+ * Check if text contains at least one model source citation.
+ */
+export function hasModelSourceCitation(text: string): boolean {
+  return text.includes(MODEL_SOURCE_ZH) || text.includes(MODEL_SOURCE_EN);
+}
+
+/**
+ * Append model source citation to text if not already present.
+ */
+export function ensureModelSourceCitation(text: string): string {
+  if (hasModelSourceCitation(text)) {
+    return text;
+  }
+  return `${text} ${MODEL_SOURCE_ZH}。`;
+}
+
+/**
+ * Check that all probabilities mentioned in the script text match the input prediction.
+ * Returns list of mismatched probability strings found in text.
+ */
+/**
+ * Validate that match-level prediction probabilities in text match the input.
+ * Only validates the predictionBrief field (not playerFocus which has goal scorer %).
+ *
+ * @param predictionText - text from the predictionBrief field only
+ * @param prediction - the input prediction object
+ */
+export function validateProbabilitiesInText(
+  predictionText: string,
+  prediction: { homeWin: number; draw: number; awayWin: number },
+): string[] {
+  const mismatches: string[] = [];
+  // Look for percentage patterns like "45%" or "45.2%"
+  const percentPattern = /(\d+(?:\.\d+)?)\s*%/g;
+  let match: RegExpExecArray | null;
+
+  const expectedPercentages = new Set([
+    Math.round(prediction.homeWin * 100),
+    Math.round(prediction.draw * 100),
+    Math.round(prediction.awayWin * 100),
+  ]);
+
+  while ((match = percentPattern.exec(predictionText)) !== null) {
+    const found = parseFloat(match[1]);
+    if (!expectedPercentages.has(found)) {
+      // Accept small floating-point drift
+      const isCloseToExpected = [...expectedPercentages].some(
+        (expected) => Math.abs(expected - found) <= 1,
+      );
+      if (!isCloseToExpected) {
+        mismatches.push(match[0]);
+      }
+    }
+  }
+  return mismatches;
+}
+
+/**
+ * Full validation of a ScriptOutput: checks forbidden phrases, model citations,
+ * and probability consistency.
+ */
+export interface ValidationResult {
+  valid: boolean;
+  forbiddenFound: string[];
+  missingModelCitation: boolean;
+  probabilityMismatches: string[];
+}
+
+export function validateScript(
+  output: ScriptSections | { [K: string]: unknown },
+  prediction: { homeWin: number; draw: number; awayWin: number },
+): ValidationResult {
+  const allText = Object.values(output)
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  const forbiddenFound = detectForbiddenPhrases(allText);
+  const missingModelCitation = !hasModelSourceCitation(allText);
+  // Only validate probabilities in predictionBrief, not in playerFocus (which has goal scorer %)
+  const predictionBrief = "predictionBrief" in output ? String(output["predictionBrief"]) : "";
+  const probabilityMismatches = validateProbabilitiesInText(predictionBrief, prediction);
+
+  return {
+    valid: forbiddenFound.length === 0 && !missingModelCitation && probabilityMismatches.length === 0,
+    forbiddenFound,
+    missingModelCitation,
+    probabilityMismatches,
+  };
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export { FORBIDDEN_PHRASES, FORBIDDEN_REPLACEMENTS, MODEL_SOURCE_ZH, MODEL_SOURCE_EN };

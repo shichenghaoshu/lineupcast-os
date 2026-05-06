@@ -1,0 +1,12 @@
+{
+  "name": "@lineupcast/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "python3 -m venv .venv && ./.venv/bin/python -m pip install --upgrade pip && ./.venv/bin/python -m pip install -r requirements.txt",
+    "dev": "./.venv/bin/uvicorn src.index:app --reload --host 0.0.0.0 --port 8000",
+    "lint": "./.venv/bin/ruff check src/",
+    "typecheck": "./.venv/bin/python -m compileall -q app/ src/",
+    "test": "./.venv/bin/pytest tests/ src/tests/"
+  }
+}

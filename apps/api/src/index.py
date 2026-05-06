@@ -1,0 +1,5 @@
+"""Compatibility entry point for existing imports."""
+
+from app.main import app, create_app
+
+__all__ = ["app", "create_app"]
