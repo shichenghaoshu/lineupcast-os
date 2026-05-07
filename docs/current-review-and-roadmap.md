@@ -28,40 +28,57 @@ It is not yet production-grade football forecasting infrastructure. Production u
 - Added optional `LINEUPCAST_ADMIN_TOKEN` protection for write/admin POST endpoints while preserving open local demo mode when unset.
 - Updated the API Docker image and compose build context so containerized API builds include Node and compiled TypeScript bridge packages.
 - Added CI smoke coverage for bridge scripts and API Docker image startup.
+- Implemented unified FootballDataProvider contract with capability matrix.
+- Added football-data.org provider with full endpoint coverage.
+- Created CSV importer for lineups, player stats, and match history.
+- Added DataCompletenessScore in both TypeScript and Python.
+- Integrated data completeness into Prediction Lab with degraded mode UI.
+- Added SQLAlchemy models for PostgreSQL persistence.
+- Updated /readyz with provider freshness details.
+- Added provider contract tests, completeness tests, and CSV parser tests.
 
 ## Code Review Findings
 
 ### High Priority
 
 1. The real data layer is incomplete. `MockProvider` is the only provider that supports the full cockpit contract. Live providers still lack enough form, H2H, lineup, stats, and prediction inputs to power the full prediction workflow.
-2. API state is in module-level dictionaries for matches and scripts. This is acceptable for demo mode, but it loses data on restart and diverges under multi-worker deployment.
+2. ~~API state is in module-level dictionaries for matches and scripts. This is acceptable for demo mode, but it loses data on restart and diverges under multi-worker deployment.~~ **Addressed:** SQLite persistence added via SQLAlchemy models, with PostgreSQL support available.
 3. Calibration reports are not yet release-grade. The backtest utilities exist, but league/season data snapshots and per-class calibration reports are still needed.
 
 ### Medium Priority
 
 1. OpenFootball defaults to a fixed season path. Season should be configurable and failures should surface as provider status instead of silent empty lists.
 2. LLM provider fallbacks are intentionally resilient, but callers must surface `fallback: true` as degraded state instead of treating fallback content as a normal provider success.
-3. Frontend API types and backend Pydantic schemas are still manually duplicated. Shared contract generation would prevent drift like `style` versus `tone`.
-4. Overlay export is still closer to a renderer contract than a polished operator workflow. Scene selection, copyable absolute OBS URLs, and real PNG rendering remain open.
-5. Docker bridge runtime is now covered in CI, but local Docker validation still depends on a running Docker daemon.
+3. Frontend API types and backend Pydantic schemas are still manually duplicated. Shared contract generation would prevent drift like `style` versus `tone`. **Acknowledged.**
+4. Overlay export is still closer to a renderer contract than a polished operator workflow. Scene selection, copyable absolute OBS URLs, and real PNG rendering remain open. **Acknowledged.**
+5. Data completeness scoring prevents misleading predictions by surfacing missing or stale fields before they reach the prediction pipeline.
+6. Docker bridge runtime is now covered in CI, but local Docker validation still depends on a running Docker daemon.
 
 ## Roadmap
 
 ### Near Term
 
-- Add provider freshness metadata and expose it in API readiness/UI status.
-- Make provider failures visible in the data page and API readiness output.
 - Add retry/fixture-based Docker smoke tests for local developer workflows.
 - Replace remaining hard-coded mock reads in dashboard/lineup/overlay screens with API-backed loaders and explicit demo badges.
+- Fix OpenFootball configurable season path and surface failures as provider status.
+- Surface LLM fallback state as degraded instead of treating it as normal success.
+- Investigate shared contract generation for frontend API types and backend Pydantic schemas.
+
+### Completed
+
+- Add provider freshness metadata and expose it in API readiness/UI status.
+- Make provider failures visible in the data page and API readiness output.
+- Build one complete live provider path end to end, starting with fixtures, squads, form, H2H, and stats (football-data.org provider with full endpoint coverage).
+- Add persistent storage for imported matches, generated scripts, provider runs, and prediction records (SQLAlchemy models with SQLite and PostgreSQL support).
+- Implement unified provider contract with capability matrix and contract tests.
+- Add data completeness scoring to prevent misleading predictions with degraded mode UI.
 
 ### Mid Term
 
-- Build one complete live provider path end to end, starting with fixtures, squads, form, H2H, and stats.
 - Store historical match snapshots by provider, league, and season.
 - Fit Dixon-Coles parameters from historical data instead of relying only on heuristic lineup strength.
 - Publish model cards tied to data snapshots, Brier score, log loss, ECE, and known failure segments.
 - Add grounding reports for scripts so each commentary sentence can trace back to specific input fields.
-- Add persistent storage for imported matches, generated scripts, provider runs, and prediction records.
 
 ### Long Term
 

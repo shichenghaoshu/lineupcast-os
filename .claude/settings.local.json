@@ -4,7 +4,12 @@
       "Bash(gh auth *)",
       "Bash(pnpm typecheck *)",
       "Bash(pnpm install *)",
-      "Bash(pnpm test *)"
+      "Bash(pnpm test *)",
+      "Bash(./.venv/bin/pip install *)",
+      "Bash(python -m pytest tests/test_csv_import.py::TestMissingHeaders::test_match_history_missing_columns -xvs)",
+      "Bash(./.venv/bin/python -m pytest tests/test_csv_import.py::TestMissingHeaders::test_match_history_missing_columns -xvs)",
+      "Bash(./.venv/bin/python -m pytest tests/test_prediction_degraded.py::TestMissingLineup::test_score_drops_by_lineup_weight -xvs)",
+      "Bash(./.venv/bin/python -m pytest tests/test_prediction_degraded.py::TestMissingLineup -xvs)"
     ]
   }
 }

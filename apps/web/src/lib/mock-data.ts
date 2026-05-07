@@ -271,6 +271,10 @@ export const dataProviders: DataProvider[] = [
     status: "connected",
     lastSync: "2026-05-06T19:00:00Z",
     fields: ["lineup", "stats", "fixtures"],
+    errorCount: 0,
+    lastError: null,
+    lastSuccessfulSync: "2026-05-06T19:00:00Z",
+    health: "healthy",
   },
   {
     id: "openfootball",
@@ -278,6 +282,10 @@ export const dataProviders: DataProvider[] = [
     status: "disconnected",
     lastSync: null,
     fields: ["fixtures", "standings"],
+    errorCount: 0,
+    lastError: null,
+    lastSuccessfulSync: null,
+    health: "healthy",
   },
   {
     id: "statsbomb",
@@ -285,6 +293,10 @@ export const dataProviders: DataProvider[] = [
     status: "connected",
     lastSync: "2026-05-06T18:30:00Z",
     fields: ["events", "lineup", "freeframes"],
+    errorCount: 0,
+    lastError: null,
+    lastSuccessfulSync: "2026-05-06T18:30:00Z",
+    health: "healthy",
   },
   {
     id: "football-data",
@@ -292,6 +304,10 @@ export const dataProviders: DataProvider[] = [
     status: "error",
     lastSync: "2026-05-05T10:00:00Z",
     fields: ["fixtures", "standings", "scorers"],
+    errorCount: 3,
+    lastError: "HTTP 401 Unauthorized: API token missing or expired. Configure FOOTBALL_DATA_TOKEN in environment.",
+    lastSuccessfulSync: "2026-05-05T10:00:00Z",
+    health: "degraded",
   },
   {
     id: "sportmonks",
@@ -299,6 +315,10 @@ export const dataProviders: DataProvider[] = [
     status: "disconnected",
     lastSync: null,
     fields: ["fixtures", "lineup", "stats", "odds"],
+    errorCount: 1,
+    lastError: "Connection refused: Sportmonks API endpoint unreachable. Check SPORTMONKS_API_KEY.",
+    lastSuccessfulSync: null,
+    health: "unhealthy",
   },
   {
     id: "api-football",
@@ -306,6 +326,10 @@ export const dataProviders: DataProvider[] = [
     status: "connected",
     lastSync: "2026-05-06T19:15:00Z",
     fields: ["fixtures", "lineup", "stats", "events"],
+    errorCount: 2,
+    lastError: "HTTP 403 Forbidden: Invalid API key. Verify API_FOOTBALL_KEY credentials.",
+    lastSuccessfulSync: "2026-05-06T19:15:00Z",
+    health: "degraded",
   },
 ];
 

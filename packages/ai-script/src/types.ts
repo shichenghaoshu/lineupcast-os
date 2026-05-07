@@ -56,6 +56,35 @@ export interface CardRisk {
   redRisk: number;
 }
 
+// ── Grounding types ──
+
+/**
+ * A reference to a specific input field that contributed to a sentence.
+ * Field paths use JSON pointer notation (e.g., "prediction.homeWin", "lineups.home.teamName").
+ */
+export interface SourceRef {
+  /** JSON-pointer-style path into the ScriptGenerationInput */
+  field: string;
+  /** The value that was read from this field */
+  value: unknown;
+  /** Which provider supplied this field (e.g., "lineup-provider", "prediction-model") */
+  provider: string;
+}
+
+/**
+ * Grounding report for a single sentence in the generated script.
+ */
+export interface GroundingReport {
+  /** Zero-based index of this sentence across the entire script */
+  sentenceIndex: number;
+  /** The actual sentence text */
+  sentence: string;
+  /** Input fields that contributed to this sentence */
+  sources: SourceRef[];
+  /** 0-1 confidence: how much of the sentence is grounded in data vs template filler */
+  confidence: number;
+}
+
 // ── Script generation types ──
 
 export type ScriptLanguage = "zh" | "en" | "bilingual";
@@ -102,6 +131,7 @@ export interface ScriptGenerationOutput extends ScriptSections {
   duration: ScriptDuration;
   audience?: string;
   bilingualMode?: BilingualMode;
+  grounding?: GroundingReport[];
 }
 
 export type ScriptInput = ScriptGenerationInput;

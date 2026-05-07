@@ -1,4 +1,4 @@
-"""Deterministic service layer backed by local mock data."""
+"""Deterministic service layer backed by persistent SQLite storage."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from src.mock_data import LINEUPS, MATCH_DEMO, PLAYERS_DB, PREDICTION, PROVIDERS, TEAMS
 
 from .config import Settings
+from .db import get_db
 from .schemas import (
     BacktestResponse,
     CardRisk,
@@ -18,9 +19,14 @@ from .schemas import (
     LineupRefreshResponse,
     MatchImportRequest,
     MatchLineups,
+    MatchSnapshot,
     MatchSummary,
     ModelBacktestRequest,
     ModelCard,
+    ModelCardCalibrationBin,
+    ModelCardDataSnapshot,
+    ModelCardFailureSegment,
+    ModelCardMetrics,
     ModelEvaluation,
     ModelInfo,
     ModelReference,
@@ -35,20 +41,286 @@ from .schemas import (
     ProviderTestRequest,
     ProviderTestResponse,
     ReadinessComponent,
+    ReadinessProvider,
     ReadinessResponse,
     ScriptGenerateRequest,
     ScriptLanguage,
     ScriptResponse,
     ScriptTranslateRequest,
+    SnapshotSaveRequest,
     TeamDetail,
 )
+from .storage import storage
 
 from .script_bridge import call_script_generator
 from .prediction_bridge import call_prediction_engine
 
+import json as _json
+import logging as _logging
+import subprocess as _subprocess
+from pathlib import Path as _Path
 
-MATCHES: dict[str, dict] = {MATCH_DEMO["matchId"]: MATCH_DEMO.copy()}
-SCRIPTS: dict[str, ScriptResponse] = {}
+_model_card_logger = _logging.getLogger(__name__)
+_MODEL_CARD_SCRIPT = _Path(__file__).parent.parent / "scripts" / "model-card.mjs"
+
+
+def call_model_card_generator(params: dict) -> dict | None:
+    """Call the TypeScript model card generator via subprocess.
+
+    Returns the model card dict (with json + markdown) on success, None on failure.
+    """
+    if not _MODEL_CARD_SCRIPT.exists():
+        _model_card_logger.warning("Model card bridge script not found: %s", _MODEL_CARD_SCRIPT)
+        return None
+    try:
+        result = _subprocess.run(
+            ["node", str(_MODEL_CARD_SCRIPT)],
+            input=_json.dumps(params),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            _model_card_logger.warning("Model card bridge failed: %s", result.stderr)
+            return None
+        return _json.loads(result.stdout)
+    except (_subprocess.TimeoutExpired, _json.JSONDecodeError, FileNotFoundError) as exc:
+        _model_card_logger.warning("Model card bridge error: %s", exc)
+        return None
+
+
+# ── Model definitions for model card generation ─────────────────────────────
+
+_MODEL_DEFINITIONS: dict[str, dict] = {
+    "dixon-coles-poisson": {
+        "name": "Dixon-Coles Time-Weighted Poisson",
+        "version": "2.0.0",
+        "type": "Correlated Poisson model with time-weighted strength parameters",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": [
+            "Dixon, M.J. & Coles, S.G. (1997) Modelling Association Football Scores and Inefficiencies in the Football Betting Market.",
+        ],
+        "intendedUse": [
+            "Pre-match home/draw/away probability estimation",
+            "Scoreline probability matrix generation",
+            "Commentary preparation and data journalism",
+        ],
+        "notIntendedFor": [
+            "Gambling advice or live trading",
+            "High-stakes decisions without human review",
+        ],
+        "inputFeatures": [
+            {"name": "homeTeam.attack", "description": "Relative attacking strength (1.0 = avg)"},
+            {"name": "homeTeam.defence", "description": "Relative defensive strength (lower = better)"},
+            {"name": "awayTeam.attack", "description": "Relative attacking strength"},
+            {"name": "awayTeam.defence", "description": "Relative defensive strength"},
+            {"name": "homeAdvantage", "description": "HFA multiplier on home expected goals", "defaultValue": 1.35},
+            {"name": "rho", "description": "Low-score correlation correction", "defaultValue": -0.13},
+            {"name": "leagueAvgGoals", "description": "League average goals per team per match", "defaultValue": 1.35},
+            {"name": "maxGoals", "description": "Score matrix upper bound", "defaultValue": 10},
+        ],
+        "outputs": [
+            "expectedHomeGoals, expectedAwayGoals",
+            "scoreMatrix \u2014 probability for each (home, away) scoreline",
+            "homeWin, draw, awayWin \u2014 outcome probabilities",
+            "confidence \u2014 low / medium / high",
+        ],
+        "limitations": [
+            "Assumes independent Poisson distributions (with rho correction)",
+            "Strength parameters require sufficient historical data",
+            "Does not account for red cards, injuries, or tactical changes",
+            "Time decay may over-weight small recent samples",
+        ],
+        "caveats": [
+            "Performance degrades for newly promoted teams with limited history",
+            "Home advantage parameter is league-level, not team-specific",
+        ],
+    },
+    "player-rating-adjustment": {
+        "name": "Player Rating Adjustment",
+        "version": "1.0.0",
+        "type": "Contextual delta adjustment on baseline rating",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": ["Daley, D. & Matthews, J. (2022) Contextual Player Valuation in Football"],
+        "intendedUse": ["Adjusting a baseline player rating for a specific match context"],
+        "notIntendedFor": ["Precise performance prediction", "Transfer valuation"],
+        "inputFeatures": [
+            {"name": "baselineRating", "description": "Season-long rating 0-100"},
+            {"name": "recentForm", "description": "Last 5 match avg rating"},
+            {"name": "minutesLast30Days", "description": "Fitness proxy"},
+            {"name": "age", "description": "Player age"},
+            {"name": "isHome", "description": "Venue"},
+            {"name": "opponentStrength", "description": "0-1"},
+        ],
+        "outputs": ["adjustedRating", "adjustment", "confidence"],
+        "limitations": [
+            "Baseline rating quality depends on source",
+            "Age curve is population-level, not individual",
+            "Form over 5 matches has high variance",
+            "Does not capture tactical fit or role changes",
+        ],
+        "caveats": [],
+    },
+    "xg-share": {
+        "name": "xG Share Goal Scorer Prediction",
+        "version": "1.0.0",
+        "type": "Weighted composite scorer using xG-derived features",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": ["StatBomb xG open-source framework (2018+)"],
+        "intendedUse": ["Per-player goal probability estimation for a specific match"],
+        "notIntendedFor": ["Gambling advice", "Precise probability claims"],
+        "inputFeatures": [
+            {"name": "starterMinutes", "description": "Expected minutes (0-90)"},
+            {"name": "position", "description": "GK / DEF / MID / FWD"},
+            {"name": "recentXG", "description": "xG over last 5 matches"},
+            {"name": "shotsPer90", "description": "Shots per 90 minutes"},
+            {"name": "isPenaltyTaker", "description": "Boolean"},
+        ],
+        "outputs": ["playerExpectedGoals", "P(goal)"],
+        "limitations": [
+            "xG is a model itself \u2014 inherits xG estimation uncertainty",
+            "Does not account for specific match-up dynamics",
+            "Penalty taker status may change during a match",
+        ],
+        "caveats": [],
+    },
+    "expected-booking-xb": {
+        "name": "Expected Booking xB-Inspired Card Risk",
+        "version": "1.0.0",
+        "type": "Weighted composite booking risk model",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": ["Mariscal, G. et al. (2024) Expected Booking"],
+        "intendedUse": ["Pre-match yellow card risk assessment per player"],
+        "notIntendedFor": ["Precise card probability claims", "Gambling"],
+        "inputFeatures": [
+            {"name": "yellowCardsPer90", "description": "Historical yellows per 90"},
+            {"name": "foulsPer90", "description": "Fouls committed per 90"},
+            {"name": "position", "description": "DEF highest risk, GK lowest"},
+        ],
+        "outputs": ["yellowCardProbability", "redCardRisk", "riskScore"],
+        "limitations": [
+            "Yellow card probability is a proxy, not direct measurement",
+            "Referee assignment may not be known at prediction time",
+            "Red card output is deliberately categorical only",
+        ],
+        "caveats": [],
+    },
+    "simple-red-card-risk": {
+        "name": "Simple Red Card Risk (Categorical)",
+        "version": "1.0.0",
+        "type": "Categorical risk classification",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": ["Mariscal, G. et al. (2024) Expected Booking"],
+        "intendedUse": ["Pre-match red card risk tier assessment"],
+        "notIntendedFor": ["Precise red card probability claims", "Gambling"],
+        "inputFeatures": [{"name": "compositeRiskScore", "description": "Composite risk score 0-1"}],
+        "outputs": ["redCardRisk \u2014 categorical: low / medium / high"],
+        "limitations": [
+            "Thresholds are heuristic, not empirically optimised",
+            "Does not distinguish between second-yellow and straight-red risk",
+            "Very few training examples for high category",
+        ],
+        "caveats": [],
+    },
+    "lineupcast-scriptwriter": {
+        "name": "LineupCast Scriptwriter",
+        "version": "1.0.0",
+        "type": "Deterministic template-based script generator",
+        "owner": "LineupCast OS community",
+        "license": "MIT",
+        "references": [],
+        "intendedUse": ["Pre-match broadcast script generation"],
+        "notIntendedFor": ["Live commentary", "Automated publishing without human review"],
+        "inputFeatures": [
+            {"name": "prediction", "description": "Match prediction data"},
+            {"name": "goalScorers", "description": "Top goal scorer candidates"},
+            {"name": "language", "description": "Output language (en/zh/bilingual)"},
+        ],
+        "outputs": ["script", "title"],
+        "limitations": ["Template-based, not conversational", "Limited to pre-match context"],
+        "caveats": [],
+    },
+}
+
+# Deterministic mock historical predictions for model card evaluation
+_MOCK_HISTORICAL_PREDICTIONS: list[dict] = [
+    {"homeWin": 55, "draw": 25, "awayWin": 20, "actualOutcome": "homeWin", "expectedHomeGoals": 1.8, "expectedAwayGoals": 1.0},
+    {"homeWin": 40, "draw": 30, "awayWin": 30, "actualOutcome": "draw", "expectedHomeGoals": 1.3, "expectedAwayGoals": 1.3},
+    {"homeWin": 60, "draw": 22, "awayWin": 18, "actualOutcome": "homeWin", "expectedHomeGoals": 2.0, "expectedAwayGoals": 0.9},
+    {"homeWin": 35, "draw": 28, "awayWin": 37, "actualOutcome": "awayWin", "expectedHomeGoals": 1.1, "expectedAwayGoals": 1.5},
+    {"homeWin": 48, "draw": 27, "awayWin": 25, "actualOutcome": "draw", "expectedHomeGoals": 1.6, "expectedAwayGoals": 1.2},
+    {"homeWin": 70, "draw": 18, "awayWin": 12, "actualOutcome": "homeWin", "expectedHomeGoals": 2.3, "expectedAwayGoals": 0.7},
+    {"homeWin": 25, "draw": 30, "awayWin": 45, "actualOutcome": "awayWin", "expectedHomeGoals": 0.9, "expectedAwayGoals": 1.7},
+    {"homeWin": 50, "draw": 26, "awayWin": 24, "actualOutcome": "homeWin", "expectedHomeGoals": 1.5, "expectedAwayGoals": 1.1},
+    {"homeWin": 42, "draw": 29, "awayWin": 29, "actualOutcome": "draw", "expectedHomeGoals": 1.4, "expectedAwayGoals": 1.4},
+    {"homeWin": 58, "draw": 23, "awayWin": 19, "actualOutcome": "awayWin", "expectedHomeGoals": 1.9, "expectedAwayGoals": 1.0},
+    {"homeWin": 33, "draw": 32, "awayWin": 35, "actualOutcome": "draw", "expectedHomeGoals": 1.2, "expectedAwayGoals": 1.3},
+    {"homeWin": 65, "draw": 20, "awayWin": 15, "actualOutcome": "homeWin", "expectedHomeGoals": 2.1, "expectedAwayGoals": 0.8},
+    {"homeWin": 45, "draw": 28, "awayWin": 27, "actualOutcome": "homeWin", "expectedHomeGoals": 1.5, "expectedAwayGoals": 1.2},
+    {"homeWin": 20, "draw": 25, "awayWin": 55, "actualOutcome": "awayWin", "expectedHomeGoals": 0.8, "expectedAwayGoals": 1.9},
+    {"homeWin": 52, "draw": 25, "awayWin": 23, "actualOutcome": "homeWin", "expectedHomeGoals": 1.7, "expectedAwayGoals": 1.1},
+    {"homeWin": 38, "draw": 30, "awayWin": 32, "actualOutcome": "draw", "expectedHomeGoals": 1.3, "expectedAwayGoals": 1.3},
+    {"homeWin": 72, "draw": 17, "awayWin": 11, "actualOutcome": "homeWin", "expectedHomeGoals": 2.5, "expectedAwayGoals": 0.6},
+    {"homeWin": 28, "draw": 27, "awayWin": 45, "actualOutcome": "awayWin", "expectedHomeGoals": 1.0, "expectedAwayGoals": 1.6},
+    {"homeWin": 55, "draw": 24, "awayWin": 21, "actualOutcome": "homeWin", "expectedHomeGoals": 1.8, "expectedAwayGoals": 1.0},
+    {"homeWin": 41, "draw": 29, "awayWin": 30, "actualOutcome": "awayWin", "expectedHomeGoals": 1.3, "expectedAwayGoals": 1.4},
+    {"homeWin": 62, "draw": 21, "awayWin": 17, "actualOutcome": "homeWin", "expectedHomeGoals": 2.0, "expectedAwayGoals": 0.9},
+    {"homeWin": 30, "draw": 33, "awayWin": 37, "actualOutcome": "draw", "expectedHomeGoals": 1.1, "expectedAwayGoals": 1.4},
+    {"homeWin": 48, "draw": 27, "awayWin": 25, "actualOutcome": "homeWin", "expectedHomeGoals": 1.6, "expectedAwayGoals": 1.2},
+    {"homeWin": 36, "draw": 28, "awayWin": 36, "actualOutcome": "awayWin", "expectedHomeGoals": 1.2, "expectedAwayGoals": 1.4},
+    {"homeWin": 57, "draw": 24, "awayWin": 19, "actualOutcome": "homeWin", "expectedHomeGoals": 1.8, "expectedAwayGoals": 1.0},
+    {"homeWin": 43, "draw": 28, "awayWin": 29, "actualOutcome": "draw", "expectedHomeGoals": 1.4, "expectedAwayGoals": 1.3},
+    {"homeWin": 68, "draw": 19, "awayWin": 13, "actualOutcome": "homeWin", "expectedHomeGoals": 2.2, "expectedAwayGoals": 0.7},
+    {"homeWin": 22, "draw": 26, "awayWin": 52, "actualOutcome": "awayWin", "expectedHomeGoals": 0.8, "expectedAwayGoals": 1.8},
+    {"homeWin": 50, "draw": 26, "awayWin": 24, "actualOutcome": "draw", "expectedHomeGoals": 1.5, "expectedAwayGoals": 1.2},
+    {"homeWin": 46, "draw": 27, "awayWin": 27, "actualOutcome": "homeWin", "expectedHomeGoals": 1.5, "expectedAwayGoals": 1.2},
+]
+
+
+def _build_model_card_params(model_id: str) -> dict | None:
+    """Build model card generator parameters for the given model id."""
+    model_def = _MODEL_DEFINITIONS.get(model_id)
+    if not model_def:
+        return None
+    return {
+        "model": {
+            "name": model_def["name"],
+            "version": model_def["version"],
+            "type": model_def["type"],
+            "owner": model_def["owner"],
+            "license": model_def["license"],
+            "references": model_def["references"],
+        },
+        "intendedUse": model_def["intendedUse"],
+        "notIntendedFor": model_def["notIntendedFor"],
+        "inputFeatures": model_def["inputFeatures"],
+        "outputs": model_def["outputs"],
+        "predictions": _MOCK_HISTORICAL_PREDICTIONS,
+        "dataSnapshot": {
+            "provider": "mock-provider",
+            "league": "Super Club Friendly",
+            "season": "2025/26",
+            "dateRangeStart": "2025-08-01",
+            "dateRangeEnd": "2026-05-06",
+            "matchCount": len(_MOCK_HISTORICAL_PREDICTIONS),
+            "snapshotCreatedAt": "2026-05-06T00:00:00Z",
+            "snapshotVersion": "mock-1.0.0",
+        },
+        "limitations": model_def["limitations"],
+        "caveats": model_def.get("caveats", []),
+    }
+
+
+def _ensure_seed_data() -> None:
+    """Load seed data into the database on first start if empty."""
+    db = get_db()
+    if not db.match_exists(MATCH_DEMO["matchId"]):
+        db.upsert_match(MATCH_DEMO.copy())
 
 
 def now_utc() -> datetime:
@@ -64,11 +336,15 @@ def _player_with_id(player_id: str, player: dict) -> Player:
 
 
 def list_matches() -> list[MatchSummary]:
-    return [MatchSummary(**match) for match in MATCHES.values()]
+    _ensure_seed_data()
+    db = get_db()
+    return [MatchSummary(**match) for match in db.list_matches()]
 
 
 def get_match(match_id: str) -> MatchSummary:
-    match = MATCHES.get(match_id)
+    _ensure_seed_data()
+    db = get_db()
+    match = db.get_match(match_id)
     if not match:
         _not_found("Match", match_id)
     return MatchSummary(**match)
@@ -102,7 +378,8 @@ def import_match(payload: MatchImportRequest) -> MatchSummary:
         },
         "score": None,
     }
-    MATCHES[match_id] = match
+    db = get_db()
+    db.upsert_match(match)
     return MatchSummary(**match)
 
 
@@ -158,7 +435,8 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
         _not_found("Prediction for match", match_id)
 
     # ── Try the real prediction bridge first ──────────────────────────────
-    match = MATCHES.get(match_id)
+    db = get_db()
+    match = db.get_match(match_id)
     if match is not None and settings.provider_mode == "model":
         bridge_input = {
             "matchId": match_id,
@@ -169,7 +447,7 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
         }
         bridge_result = call_prediction_engine(bridge_input)
         if bridge_result is not None:
-            return PredictionResponse(
+            prediction = PredictionResponse(
                 matchId=match_id,
                 homeWin=bridge_result.get("homeWin", PREDICTION["homeWin"]),
                 draw=bridge_result.get("draw", PREDICTION["draw"]),
@@ -199,9 +477,11 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
                 models=[PredictionModelInfo(**m) for m in bridge_result.get("models", PREDICTION["models"])],
                 explanations=bridge_result.get("explanations", PREDICTION["explanations"]),
             )
+            db.save_prediction(prediction.model_dump(mode="json"))
+            return prediction
 
     # ── Fallback to mock data ─────────────────────────────────────────────
-    return PredictionResponse(
+    prediction = PredictionResponse(
         matchId=match_id,
         homeWin=PREDICTION["homeWin"],
         draw=PREDICTION["draw"],
@@ -229,6 +509,8 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
         models=[PredictionModelInfo(**item) for item in PREDICTION["models"]],
         explanations=PREDICTION["explanations"],
     )
+    db.save_prediction(prediction.model_dump(mode="json"))
+    return prediction
 
 
 def explain_prediction(settings: Settings, match_id: str) -> PredictionExplainResponse:
@@ -388,7 +670,8 @@ def generate_script(
     prediction = get_prediction(settings, match_id)
 
     # ── Try the real ai-script bridge first ──────────────────────────────
-    match = MATCHES.get(match_id)
+    db = get_db()
+    match = db.get_match(match_id)
     if match is not None:
         script_input = _build_script_input(
             match_id, match, prediction.model_dump(mode="json"), payload
@@ -419,7 +702,7 @@ def generate_script(
                         "or professional match operations."
                     ),
                 )
-                SCRIPTS[script_response.scriptId] = script_response
+                db.save_script(script_response.model_dump(mode="json"))
                 return script_response
 
     # ── Fallback to deterministic template ───────────────────────────────
@@ -442,25 +725,28 @@ def generate_script(
             "Not for betting, scouting, or professional match operations."
         ),
     )
-    SCRIPTS[script_response.scriptId] = script_response
+    db.save_script(script_response.model_dump(mode="json"))
     return script_response
 
 
 def list_scripts(match_id: str) -> list[ScriptResponse]:
     get_match(match_id)
-    scripts = [script for script in SCRIPTS.values() if script.matchId == match_id]
-    return sorted(scripts, key=lambda item: item.generatedAt, reverse=True)
+    db = get_db()
+    return [
+        ScriptResponse(**script) for script in db.list_scripts(match_id)
+    ]
 
 
 def translate_script(
     settings: Settings, script_id: str, payload: ScriptTranslateRequest
 ) -> ScriptResponse:
-    script = SCRIPTS.get(script_id)
-    if not script:
+    db = get_db()
+    script_data = db.get_script(script_id)
+    if not script_data:
         _not_found("Script", script_id)
     translated = generate_script(
         settings,
-        script.matchId,
+        script_data["matchId"],
         ScriptGenerateRequest(language=payload.language, tone="translated"),
     )
     return translated.model_copy(update={"scriptId": script_id, "status": "translated"})
@@ -527,7 +813,54 @@ def get_model(settings: Settings, model_id: str) -> ModelInfo:
 
 
 def get_model_card(settings: Settings, model_id: str) -> ModelCard:
+    """Generate a model card with real metrics from the TypeScript model card generator.
+
+    Falls back to a basic card if the bridge is unavailable.
+    """
     model = get_model(settings, model_id)
+    params = _build_model_card_params(model_id)
+
+    if params is not None:
+        bridge_result = call_model_card_generator(params)
+        if bridge_result is not None:
+            card_json = bridge_result.get("json", {})
+            card_metrics = card_json.get("metrics", {})
+            card_snapshot = card_json.get("dataSnapshot", {})
+            return ModelCard(
+                modelId=model.modelId,
+                name=model.name,
+                intendedUse="\n".join(card_json.get("intendedUse", [])),
+                limitations=card_json.get("limitations", []),
+                features=[f.get("name", "") for f in card_json.get("inputFeatures", [])],
+                version=card_json.get("model", {}).get("version"),
+                modelType=card_json.get("model", {}).get("type"),
+                references=card_json.get("model", {}).get("references", []),
+                notIntendedFor=card_json.get("notIntendedFor", []),
+                outputs=card_json.get("outputs", []),
+                metrics=ModelCardMetrics(
+                    sampleSize=card_metrics.get("sampleSize", 0),
+                    brierScore=card_metrics.get("brierScore", 0.0),
+                    brierScoreConfidence=card_metrics.get("brierScoreConfidence", "low"),
+                    logLoss=card_metrics.get("logLoss", 0.0),
+                    logLossConfidence=card_metrics.get("logLossConfidence", "low"),
+                    ece=card_metrics.get("ece", 0.0),
+                    eceConfidence=card_metrics.get("eceConfidence", "low"),
+                ),
+                calibrationBins=[
+                    ModelCardCalibrationBin(**bin_data)
+                    for bin_data in card_json.get("calibrationBins", [])
+                ],
+                failureSegments=[
+                    ModelCardFailureSegment(**seg)
+                    for seg in card_json.get("failureSegments", [])
+                ],
+                dataSnapshot=ModelCardDataSnapshot(**card_snapshot) if card_snapshot else None,
+                caveats=card_json.get("caveats", []),
+                generatedAt=datetime.fromisoformat(card_json["generatedAt"]) if card_json.get("generatedAt") else None,
+                schemaVersion=card_json.get("schemaVersion", "1.0.0"),
+            )
+
+    # Fallback to basic card if bridge is unavailable
     return ModelCard(
         modelId=model.modelId,
         name=model.name,
@@ -537,6 +870,23 @@ def get_model_card(settings: Settings, model_id: str) -> ModelCard:
             "Not suitable for betting, professional scouting, or live match operations.",
         ],
         features=PREDICTION["inputFeatures"],
+    )
+
+
+def get_model_card_markdown(settings: Settings, model_id: str) -> str:
+    """Generate and return the human-readable Markdown model card."""
+    get_model(settings, model_id)
+    params = _build_model_card_params(model_id)
+
+    if params is not None:
+        bridge_result = call_model_card_generator(params)
+        if bridge_result is not None:
+            return bridge_result.get("markdown", "# Model Card\n\nMarkdown generation failed.")
+
+    return (
+        "# Model Card\n\n"
+        "Model card generation requires the TypeScript prediction package. "
+        "Ensure `packages/prediction` is built (`npm run build`)."
     )
 
 
@@ -575,6 +925,12 @@ def test_provider(payload: ProviderTestRequest) -> ProviderTestResponse:
 
 
 def sync_providers() -> ProviderSyncResponse:
+    db = get_db()
+    db.save_provider_run(
+        provider_id="all-providers",
+        status="synced",
+        provider_count=len(PROVIDERS),
+    )
     return ProviderSyncResponse(
         status="synced",
         providerCount=len(PROVIDERS),
@@ -582,8 +938,38 @@ def sync_providers() -> ProviderSyncResponse:
     )
 
 
+def save_prediction_record(
+    match_id: str,
+    prediction_data: dict,
+    actual_result: dict | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Persist a prediction record for tracking prediction history."""
+    db = get_db()
+    return db.save_prediction_record(
+        match_id=match_id,
+        prediction_data=prediction_data,
+        actual_result=actual_result,
+        notes=notes,
+    )
+
+
+def save_provider_run(
+    provider_id: str,
+    status: str = "synced",
+    provider_count: int = 0,
+) -> dict:
+    """Persist a provider sync run for tracking provider history."""
+    db = get_db()
+    return db.save_provider_run(
+        provider_id=provider_id,
+        status=status,
+        provider_count=provider_count,
+    )
+
+
 def provider_logs() -> list[ProviderLog]:
-    return [
+    logs: list[ProviderLog] = [
         ProviderLog(
             providerId="mock-provider",
             level="info",
@@ -597,6 +983,40 @@ def provider_logs() -> list[ProviderLog]:
             createdAt=now_utc(),
         ),
     ]
+    # Append error logs for providers that have recorded failures
+    for provider in PROVIDERS:
+        last_error = provider.get("lastError")
+        if last_error:
+            logs.append(
+                ProviderLog(
+                    providerId=provider["id"],
+                    level="error",
+                    message=last_error,
+                    createdAt=now_utc(),
+                )
+            )
+    return logs
+
+
+def _compute_freshness(last_sync: str | None) -> str:
+    """Compute a human-readable freshness label from a lastSuccessfulSync timestamp."""
+    if not last_sync:
+        return "never"
+    try:
+        sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+        delta = now_utc() - sync_dt
+        minutes = int(delta.total_seconds() / 60)
+        if minutes < 5:
+            return "just now"
+        if minutes < 60:
+            return f"{minutes}m ago"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}h ago"
+        days = hours // 24
+        return f"{days}d ago"
+    except (ValueError, TypeError):
+        return "unknown"
 
 
 def readiness(settings: Settings) -> ReadinessResponse:
@@ -609,8 +1029,67 @@ def readiness(settings: Settings) -> ReadinessResponse:
         provider_detail = "external provider key configured"
     else:
         provider_detail = "external provider key missing"
+
+    # Build per-provider readiness info with error details, freshness,
+    # missing capabilities, and degraded reasons.
+    readiness_providers: list[ReadinessProvider] = []
+    freshness_map: dict[str, str] = {}
+    total_error_count = 0
+    has_provider_errors = False
+
+    for provider in PROVIDERS:
+        error_count = provider.get("errorCount", 0)
+        health = provider.get("health", "healthy")
+        provider_status = provider.get("status", "connected")
+        total_error_count += error_count
+        if health in ("degraded", "unhealthy"):
+            has_provider_errors = True
+
+        # Compute freshness label from lastSuccessfulSync
+        last_sync = provider.get("lastSuccessfulSync")
+        freshness = _compute_freshness(last_sync)
+        freshness_map[provider["id"]] = freshness
+
+        # Derive missing capabilities from provider status
+        missing_capabilities: list[str] = []
+        if provider_status in ("needs-token", "missing_token"):
+            missing_capabilities = ["lineups", "playerStats", "fixtures"]
+        elif provider_status == "placeholder":
+            missing_capabilities = ["lineups", "playerStats"]
+        elif provider_status == "rate_limited":
+            missing_capabilities = []  # has capabilities, just rate-limited
+
+        # Build degraded reasons from health and lastError
+        degraded_reasons: list[str] = []
+        if health in ("degraded", "unhealthy"):
+            last_error = provider.get("lastError")
+            if last_error:
+                degraded_reasons.append(last_error)
+            if provider_status == "needs-token":
+                degraded_reasons.append("API token not configured")
+            if provider_status == "rate_limited":
+                degraded_reasons.append(f"Rate limited since {last_sync or 'unknown'}")
+
+        readiness_providers.append(
+            ReadinessProvider(
+                id=provider["id"],
+                name=provider["name"],
+                status=provider_status,
+                errorCount=error_count,
+                lastError=provider.get("lastError"),
+                lastSuccessfulSync=last_sync,
+                freshness=freshness,
+                health=health,  # type: ignore[arg-type]
+                missingCapabilities=missing_capabilities,
+                degradedReasons=degraded_reasons,
+            )
+        )
+
+    # Determine overall status: degraded if any provider has errors
+    overall_status = "degraded" if has_provider_errors or not external_ready else "ready"
+
     return ReadinessResponse(
-        status="ready" if external_ready else "degraded",
+        status=overall_status,
         provider=ReadinessComponent(
             available=external_ready,
             mode=settings.provider_mode,
@@ -621,6 +1100,9 @@ def readiness(settings: Settings) -> ReadinessResponse:
             mode="deterministic",
             detail="model configured from environment",
         ),
+        providers=readiness_providers,
+        providerFreshness=freshness_map,
+        errorCount=total_error_count,
     )
 
 
@@ -655,3 +1137,94 @@ def overlay(match_id: str) -> OverlayLayout:
             ),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Snapshot persistence
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_id(provider: str, league: str, season: str, match_id: str) -> str:
+    """Build a deterministic snapshot identifier from its coordinates."""
+    return f"{provider}_{league}_{season}_{match_id}"
+
+
+def save_snapshot(payload: SnapshotSaveRequest) -> MatchSnapshot:
+    """Persist a match snapshot to disk and return the resulting schema."""
+    storage.save_snapshot(
+        match_id=payload.matchId,
+        provider=payload.provider,
+        league=payload.league,
+        season=payload.season,
+        data={"dataVersion": payload.dataVersion, **payload.data},
+    )
+    return MatchSnapshot(
+        snapshotId=_snapshot_id(
+            payload.provider, payload.league, payload.season, payload.matchId
+        ),
+        matchId=payload.matchId,
+        provider=payload.provider,
+        league=payload.league,
+        season=payload.season,
+        dataVersion=payload.dataVersion,
+        data=payload.data,
+        savedAt=now_utc(),
+    )
+
+
+def load_snapshot(match_id: str, provider: str, league: str, season: str) -> MatchSnapshot:
+    """Load a snapshot from disk by its coordinates.
+
+    Raises ``HTTPException(404)`` if the snapshot file is missing.
+    """
+    try:
+        raw = storage.load_snapshot(match_id, provider, league, season)
+    except FileNotFoundError:
+        _not_found("Snapshot", f"{provider}/{league}/{season}/{match_id}")
+    return MatchSnapshot(
+        snapshotId=_snapshot_id(provider, league, season, match_id),
+        matchId=match_id,
+        provider=provider,
+        league=league,
+        season=season,
+        dataVersion=raw.get("dataVersion", "1.0.0"),
+        data=raw,
+        savedAt=now_utc(),
+    )
+
+
+def list_snapshots(
+    provider: str | None = None,
+    league: str | None = None,
+    season: str | None = None,
+) -> list[MatchSnapshot]:
+    """List stored snapshots with optional filters."""
+    entries = storage.list_snapshots(provider=provider, league=league, season=season)
+    results: list[MatchSnapshot] = []
+    for entry in entries:
+        mid = entry["match_id"]
+        prov = entry["provider"]
+        lg = entry["league"]
+        seas = entry["season"]
+        try:
+            raw = storage.load_snapshot(mid, prov, lg, seas)
+        except FileNotFoundError:
+            continue
+        results.append(
+            MatchSnapshot(
+                snapshotId=_snapshot_id(prov, lg, seas, mid),
+                matchId=mid,
+                provider=prov,
+                league=lg,
+                season=seas,
+                dataVersion=raw.get("dataVersion", "1.0.0"),
+                data=raw,
+                savedAt=now_utc(),
+            )
+        )
+    return results
+
+
+def delete_snapshot(match_id: str, provider: str, league: str, season: str) -> bool:
+    """Delete a snapshot. Returns ``True`` if it existed."""
+    return storage.delete_snapshot(match_id, provider, league, season)

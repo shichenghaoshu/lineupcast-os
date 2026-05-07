@@ -498,7 +498,7 @@ PREDICTION = {
         {
             "name": "VAEP-inspired Player Impact",
             "version": "1.0.0",
-            "reference": "docs/model-cards/player-rating-adjustment.md",
+            "reference": "docs/model-cards/vaep-inspired-impact.md",
         },
         {
             "name": "Expected Booking xB-inspired Model",
@@ -547,6 +547,10 @@ PROVIDERS = [
         "type": "mock",
         "description": "Deterministic demo data for Manchester Red vs Shanghai Harbor. No commercial sports data or API key required.",
         "status": "connected",
+        "errorCount": 0,
+        "lastError": None,
+        "lastSuccessfulSync": "2026-05-06T19:00:00Z",
+        "health": "healthy",
     },
     {
         "id": "openfootball",
@@ -554,6 +558,10 @@ PROVIDERS = [
         "type": "open-data",
         "description": "Adapter interface placeholder for OpenFootball-style fixtures and team metadata.",
         "status": "placeholder",
+        "errorCount": 0,
+        "lastError": None,
+        "lastSuccessfulSync": None,
+        "health": "healthy",
     },
     {
         "id": "statsbomb-open-data",
@@ -561,6 +569,10 @@ PROVIDERS = [
         "type": "open-data",
         "description": "Adapter interface placeholder for StatsBomb Open Data examples and event schema mapping.",
         "status": "placeholder",
+        "errorCount": 0,
+        "lastError": None,
+        "lastSuccessfulSync": None,
+        "health": "healthy",
     },
     {
         "id": "football-data-org",
@@ -568,6 +580,10 @@ PROVIDERS = [
         "type": "external-api",
         "description": "User-configured API key placeholder. Tokens are read from environment variables and must not be committed.",
         "status": "needs-token",
+        "errorCount": 3,
+        "lastError": "HTTP 401 Unauthorized: API token missing or expired. Configure FOOTBALL_DATA_TOKEN in environment.",
+        "lastSuccessfulSync": "2026-05-05T10:00:00Z",
+        "health": "degraded",
     },
     {
         "id": "sportmonks",
@@ -575,6 +591,10 @@ PROVIDERS = [
         "type": "external-api",
         "description": "Commercial provider integration placeholder for users with their own authorized Sportmonks credentials.",
         "status": "needs-token",
+        "errorCount": 1,
+        "lastError": "Connection refused: Sportmonks API endpoint unreachable. Check SPORTMONKS_API_KEY.",
+        "lastSuccessfulSync": None,
+        "health": "unhealthy",
     },
     {
         "id": "api-football",
@@ -582,5 +602,9 @@ PROVIDERS = [
         "type": "external-api",
         "description": "Commercial provider integration placeholder for users with their own authorized API-FOOTBALL credentials.",
         "status": "needs-token",
+        "errorCount": 2,
+        "lastError": "HTTP 403 Forbidden: Invalid API key. Verify API_FOOTBALL_KEY credentials.",
+        "lastSuccessfulSync": "2026-05-06T19:15:00Z",
+        "health": "degraded",
     },
 ]

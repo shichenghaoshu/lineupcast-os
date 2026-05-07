@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { TopBar } from "@/components/TopBar";
 import { MatchHeader } from "@/components/MatchHeader";
 import { MetricCard } from "@/components/MetricCard";
@@ -8,20 +9,22 @@ import { FormationPitch } from "@/components/FormationPitch";
 import { PlayerCard } from "@/components/PlayerCard";
 import { H2HExplorer } from "@/components/H2HExplorer";
 import { FormTracker } from "@/components/FormTracker";
+import { DemoBadge } from "@/components/DemoBadge";
+import { loadMatch, loadPrediction, loadLineups } from "@/lib/data-loader";
 import {
-  currentMatch,
   manchesterRedXI,
-  matchPrediction,
   trendData,
   h2hRecord,
   homeForm,
 } from "@/lib/mock-data";
+import type { Match, Prediction, Player } from "@/lib/types";
 import {
   Users,
   FileText,
   Target,
   Monitor,
   TrendingUp,
+  Loader2,
 } from "lucide-react";
 import {
   LineChart,
@@ -34,13 +37,64 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
+  const [match, setMatch] = useState<Match | null>(null);
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const [players, setPlayers] = useState<Player[]>(manchesterRedXI);
+  const [isDemo, setIsDemo] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchAll() {
+      const [m, p, l] = await Promise.all([
+        loadMatch(),
+        loadPrediction("match-001"),
+        loadLineups("match-001"),
+      ]);
+      if (cancelled) return;
+
+      setMatch(m.data);
+      setPrediction(p.data);
+      setPlayers(l.data);
+      setIsDemo(m.isDemo || p.isDemo || l.isDemo);
+      setLoading(false);
+    }
+
+    fetchAll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading || !match || !prediction) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent-blue)]" />
+        <span className="ml-2 text-sm text-[var(--text-muted)]">
+          Loading dashboard...
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
-      <TopBar title="数据驾驶舱" subtitle="Manchester Red vs Shanghai Harbor" />
+      <div className="flex items-center justify-between">
+        <TopBar
+          title="数据驾驶舱"
+          subtitle={`${match.homeTeam} vs ${match.awayTeam}`}
+        />
+        {isDemo && (
+          <div className="fixed right-4 top-3 z-50">
+            <DemoBadge />
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4 p-4 md:p-6">
         {/* Match Header */}
-        <MatchHeader match={currentMatch} />
+        <MatchHeader match={match} />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -59,7 +113,7 @@ export default function DashboardPage() {
           />
           <MetricCard
             label="Prediction Confidence / 预测置信度"
-            value="72"
+            value={String(prediction.confidence)}
             icon={<Target className="h-4 w-4" />}
             color="purple"
             subtitle="%"
@@ -86,7 +140,7 @@ export default function DashboardPage() {
               <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 阵容预览 · 4-2-3-1
               </div>
-              <FormationPitch players={manchesterRedXI} />
+              <FormationPitch players={players} />
             </div>
 
             <div className="card space-y-2">
@@ -94,27 +148,27 @@ export default function DashboardPage() {
                 AI 赛前摘要
               </div>
               <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
-                Manchester Red 近期状态出色，连续3场取胜。V. Finish 以1.8 xG领跑锋线，
+                {match.homeTeam} 近期状态出色，连续3场取胜。V. Finish 以1.8 xG领跑锋线，
                 J. Spark 边路突破能力将成为撕裂对手防线的关键。需注意 C. Press 的犯规频率（2.1/90分钟），
-                黄牌风险42%。Dixon-Coles模型预测主队胜率48%，阵容调整后置信度提升至72%。
+                黄牌风险42%。Dixon-Coles模型预测主队胜率{prediction.homeWin}%，阵容调整后置信度提升至{prediction.confidence}%。
               </p>
             </div>
 
             <H2HExplorer
               record={h2hRecord}
-              homeTeam="Manchester Red"
-              awayTeam="Shanghai Harbor"
+              homeTeam={match.homeTeam}
+              awayTeam={match.awayTeam}
             />
           </div>
 
           {/* Center: Prediction + Trend */}
           <div className="lg:col-span-5 space-y-4">
             <PredictionCard
-              homeWin={matchPrediction.homeWin}
-              draw={matchPrediction.draw}
-              awayWin={matchPrediction.awayWin}
-              homeTeam="Manchester Red"
-              awayTeam="Shanghai Harbor"
+              homeWin={prediction.homeWin}
+              draw={prediction.draw}
+              awayWin={prediction.awayWin}
+              homeTeam={match.homeTeam}
+              awayTeam={match.awayTeam}
             />
             <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
               Prediction Summary / 预测摘要
@@ -171,20 +225,24 @@ export default function DashboardPage() {
               <div className="card text-center">
                 <div className="text-xs text-[var(--text-muted)]">预期进球</div>
                 <div className="text-2xl font-bold text-[var(--accent-green)]">
-                  {matchPrediction.expectedHomeGoals}
+                  {prediction.expectedHomeGoals}
                 </div>
-                <div className="text-xs text-[var(--text-muted)]">Manchester Red</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {match.homeTeam}
+                </div>
               </div>
               <div className="card text-center">
                 <div className="text-xs text-[var(--text-muted)]">预期进球</div>
                 <div className="text-2xl font-bold text-[var(--accent-blue)]">
-                  {matchPrediction.expectedAwayGoals}
+                  {prediction.expectedAwayGoals}
                 </div>
-                <div className="text-xs text-[var(--text-muted)]">Shanghai Harbor</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {match.awayTeam}
+                </div>
               </div>
             </div>
 
-            <FormTracker form={homeForm} teamName="Manchester Red" />
+            <FormTracker form={homeForm} teamName={match.homeTeam} />
           </div>
 
           {/* Right: Key Players */}
@@ -194,7 +252,7 @@ export default function DashboardPage() {
                 关键球员
               </div>
               <div className="space-y-2">
-                {manchesterRedXI
+                {players
                   .sort((a, b) => b.recentRating - a.recentRating)
                   .slice(0, 5)
                   .map((player) => (
@@ -207,7 +265,7 @@ export default function DashboardPage() {
               <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 可能进球人
               </div>
-              {matchPrediction.possibleScorers.map((scorer) => (
+              {prediction.possibleScorers.map((scorer) => (
                 <div
                   key={scorer.name}
                   className="flex items-center justify-between text-sm"
@@ -224,7 +282,7 @@ export default function DashboardPage() {
               <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 黄牌风险
               </div>
-              {matchPrediction.yellowCardRisks.map((risk) => (
+              {prediction.yellowCardRisks.map((risk) => (
                 <div
                   key={risk.name}
                   className="flex items-center justify-between text-sm"

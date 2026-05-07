@@ -15,6 +15,8 @@ export type {
   PlayerCoordinates,
   GoalScorer,
   CardRisk,
+  SourceRef,
+  GroundingReport,
 } from "./types.js";
 
 export { generateScript, generateScriptWithLlm } from "./generateScript.js";
@@ -45,3 +47,5 @@ export {
 export { scriptOutputSchema } from "./schema.js";
 
 export type { ValidationResult } from "./forbidden.js";
+
+export { generateGroundingReport, splitIntoSentences, summarizeGrounding } from "./grounding.js";

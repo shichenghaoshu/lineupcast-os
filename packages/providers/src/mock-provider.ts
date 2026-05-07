@@ -34,6 +34,9 @@ const PROVIDER_META: Provider = {
     form: true,
     prediction: true,
   },
+  lastSync: new Date().toISOString(),
+  freshness: "just now",
+  errorCount: 0,
 };
 
 // ─── Teams ───────────────────────────────────────────────────────────

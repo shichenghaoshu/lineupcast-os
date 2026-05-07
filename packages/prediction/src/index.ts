@@ -335,8 +335,34 @@ export {
   type BacktestResult,
 } from "./evaluation/backtest.js";
 
+// Calibration — MLE parameter fitting for Dixon-Coles
+export {
+  fitDixonColesParams,
+  predictFromFittedParams,
+  type FitOptions,
+  type HistoricalMatch as CalibrationHistoricalMatch,
+  type FittedParams,
+  type CalibrationResult as FittedCalibrationResult,
+} from "./calibration/index.js";
+
 // Deterministic Explanation Layer
 export {
   explain,
   type ExplanationResult,
 } from "./explanation.js";
+
+// Model Card Generation (Mitchell et al., 2019)
+export {
+  generateModelCard,
+  type ModelCard,
+  type ModelCardOutput,
+  type ModelCardParams,
+  type ModelCardPrediction,
+  type ModelDescription,
+  type DataSnapshotMetadata,
+  type PerformanceMetrics,
+  type CalibrationBinData,
+  type FailureSegment,
+  type FailureSegmentDefinition,
+  type InputFeature,
+} from "./modelCard/index.js";

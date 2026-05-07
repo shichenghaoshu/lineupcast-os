@@ -1,6 +1,6 @@
 """FastAPI application factory and route declarations."""
 
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.mock_data import PROVIDERS
@@ -9,6 +9,7 @@ from .config import Settings, get_settings
 from .security import require_admin
 from . import services
 from .leagues import get_leagues, get_league_by_id
+from .routes.imports import router as imports_router
 from .schemas import (
     BacktestResponse,
     HealthResponse,
@@ -16,6 +17,7 @@ from .schemas import (
     LineupRefreshResponse,
     MatchImportRequest,
     MatchLineups,
+    MatchSnapshot,
     MatchSummary,
     ModelBacktestRequest,
     ModelCard,
@@ -34,6 +36,8 @@ from .schemas import (
     ScriptGenerateRequest,
     ScriptResponse,
     ScriptTranslateRequest,
+    SnapshotListResponse,
+    SnapshotSaveRequest,
     TeamDetail,
 )
 
@@ -57,6 +61,8 @@ def create_app() -> FastAPI:
 
 
 def register_routes(api: FastAPI) -> None:
+    api.include_router(imports_router)
+
     @api.get("/healthz", response_model=HealthResponse)
     async def healthz(settings: Settings = Depends(get_settings)) -> HealthResponse:
         return HealthResponse(status="ok", version=settings.version)
@@ -200,6 +206,13 @@ def register_routes(api: FastAPI) -> None:
     ) -> ModelCard:
         return services.get_model_card(settings, model_id)
 
+    @api.get("/api/models/{model_id}/card/markdown")
+    async def get_model_card_markdown(
+        model_id: str, settings: Settings = Depends(get_settings)
+    ) -> Response:
+        markdown = services.get_model_card_markdown(settings, model_id)
+        return Response(content=markdown, media_type="text/markdown")
+
     @api.get("/api/models/{model_id}/evaluation", response_model=ModelEvaluation)
     async def get_model_evaluation(
         model_id: str, settings: Settings = Depends(get_settings)
@@ -237,6 +250,38 @@ def register_routes(api: FastAPI) -> None:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail=f"League '{league_id}' not found")
         return league
+
+    # ── Snapshot endpoints ─────────────────────────────────────────────────
+
+    @api.get("/api/snapshots", response_model=SnapshotListResponse)
+    async def list_snapshots(
+        provider: str | None = None,
+        league: str | None = None,
+        season: str | None = None,
+    ) -> SnapshotListResponse:
+        snapshots = services.list_snapshots(
+            provider=provider, league=league, season=season
+        )
+        return SnapshotListResponse(snapshots=snapshots, total=len(snapshots))
+
+    @api.get(
+        "/api/snapshots/{provider}/{league}/{season}/{match_id}",
+        response_model=MatchSnapshot,
+    )
+    async def get_snapshot(
+        provider: str, league: str, season: str, match_id: str
+    ) -> MatchSnapshot:
+        return services.load_snapshot(match_id, provider, league, season)
+
+    @api.post(
+        "/api/snapshots",
+        response_model=MatchSnapshot,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_snapshot(
+        payload: SnapshotSaveRequest, _: Settings = Depends(require_admin)
+    ) -> MatchSnapshot:
+        return services.save_snapshot(payload)
 
 
 app = create_app()

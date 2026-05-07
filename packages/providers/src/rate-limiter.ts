@@ -36,6 +36,12 @@ export class RateLimiter {
     this.refill();
     return this.tokens;
   }
+
+  /** Reset tokens to maximum (useful for testing). */
+  reset(): void {
+    this.tokens = this.maxTokens;
+    this.lastRefill = Date.now();
+  }
 }
 
 /** Pre-configured rate limiters for each provider. */

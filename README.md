@@ -10,6 +10,9 @@
 - **Prediction Engine** — open-source xG-based model for match outcome probabilities
 - **AI Script Generator** — turn stats into structured commentary scripts
 - **Overlay Renderer** — export broadcast-ready graphics as PNG/HTML
+- **Data Completeness Scoring** — automatic assessment of prediction data quality
+- **CSV Import** — bulk import lineups, player stats, and match history
+- **Provider Health Monitoring** — real-time provider status and freshness tracking
 
 ## Tech Stack
 
@@ -19,6 +22,7 @@
 | API | FastAPI, Pydantic, Uvicorn |
 | Packages | TypeScript (ESM), shared schemas, data providers |
 | Database | PostgreSQL 16 |
+| Persistence | SQLite (dev), PostgreSQL 16 (prod) |
 | Tooling | pnpm workspaces, ESLint, Prettier, Vitest, mypy |
 
 ## Quick Start
@@ -77,6 +81,18 @@ All data is sourced from **open, freely-available football datasets**:
 
 No commercial API keys are required. Provider adapters live in `packages/providers`.
 
+## Data Import
+
+LineupCast supports bulk CSV import for lineups, player stats, and match history via the API import endpoint.
+
+```bash
+# Import a CSV file through the API
+curl -X POST http://localhost:8000/api/import \
+  -F "file=@path/to/your-data.csv"
+```
+
+Accepted file types: lineups, player stats, and match history. Each file is validated and scored for data completeness on import. See [`docs/data-import-csv.md`](docs/data-import-csv.md) for column specifications, sample files, and error handling details.
+
 ## Disclaimer
 
 LineupCast OS is an **educational and analytical tool**. It is not a betting service. Predictions are probabilistic estimates based on historical data — they are not guarantees. Always verify information independently. See [`docs/limitations.md`](docs/limitations.md).
@@ -91,8 +107,14 @@ Current status:
 - [x] Deterministic prediction package with Dixon-Coles, scorer, card-risk, calibration, and backtest utilities
 - [x] FastAPI demo API with health/readiness, script, prediction, model, provider, import, and overlay contracts
 - [x] Python-to-TypeScript bridge scripts for local prediction and script generation
-- [ ] Production data persistence and auth for write/admin endpoints
-- [ ] One fully complete live provider path for fixtures, squads, lineups, form, H2H, and match stats
+- [x] Unified FootballDataProvider contract with capability matrix
+- [x] football-data.org provider with fixtures, match detail, recent matches, standings
+- [x] CSV importer for lineups, player stats, and match history
+- [x] Data completeness scoring with confidence caps and degraded mode
+- [x] Provider health monitoring with freshness tracking
+- [x] SQLite persistence for matches, scripts, predictions
+- [x] SQLAlchemy models for PostgreSQL migration
+- [ ] Production auth for write/admin endpoints
 - [ ] Published calibration reports by league and season
 
 ## Contributing

@@ -93,6 +93,11 @@ export interface ProviderItem {
   status: string;
   lastSync?: string | null;
   fields?: string[];
+  errorCount?: number;
+  lastError?: string | null;
+  lastSuccessfulSync?: string | null;
+  freshness?: string;
+  health?: "healthy" | "degraded" | "unhealthy";
 }
 
 export interface ProviderLog {
@@ -108,6 +113,28 @@ export interface ProviderDashboard {
   apiHealth: "online" | "offline";
   syncStatus: "idle" | "running" | "fallback";
   testStatus: "ready" | "unavailable";
+}
+
+export interface ReadinessProviderInfo {
+  id: string;
+  name: string;
+  status: string;
+  errorCount: number;
+  lastError: string | null;
+  lastSuccessfulSync: string | null;
+  freshness?: string;
+  health: "healthy" | "degraded" | "unhealthy";
+  missingCapabilities?: string[];
+  degradedReasons?: string[];
+}
+
+export interface ReadinessData {
+  status: "ready" | "degraded";
+  provider: { available: boolean; mode: string; detail: string };
+  model: { available: boolean; mode: string; detail: string };
+  providers: ReadinessProviderInfo[];
+  providerFreshness?: Record<string, string>;
+  errorCount: number;
 }
 
 type Fetcher = typeof fetch;
@@ -257,6 +284,102 @@ async function getApiHealth(fetcher?: Fetcher): Promise<"online" | "offline"> {
     return "online";
   } catch {
     return "offline";
+  }
+}
+
+export async function getReadiness(fetcher?: Fetcher): Promise<ReadinessData | null> {
+  try {
+    return await requestJson<ReadinessData>("/readyz", undefined, fetcher);
+  } catch {
+    return null;
+  }
+}
+
+export interface DataCompletenessInfo {
+  score: number;
+  missingFields: string[];
+  degradedReasons: string[];
+  confidenceCap: number;
+  dataSource: "live" | "demo";
+  fallbackMethod: string | null;
+}
+
+/**
+ * Derive data completeness from readiness data.
+ * Attempts the /api/completeness endpoint first; falls back to
+ * computing from readiness provider health.
+ */
+export async function getDataCompleteness(fetcher?: Fetcher): Promise<DataCompletenessInfo> {
+  try {
+    return await requestJson<DataCompletenessInfo>("/api/completeness", undefined, fetcher);
+  } catch {
+    // Derive from readiness data
+    const readiness = await getReadiness(fetcher);
+    if (!readiness) {
+      return {
+        score: 0,
+        missingFields: ["lineup", "playerStats", "cardStats", "referee", "recentForm", "h2h", "injuries", "xG"],
+        degradedReasons: ["API unreachable — using bundled demo data"],
+        confidenceCap: 0,
+        dataSource: "demo",
+        fallbackMethod: "Local mock data with default player profiles",
+      };
+    }
+
+    const missingFields: string[] = [];
+    const degradedReasons: string[] = [];
+    let score = 100;
+
+    // Map provider health to data field availability
+    const providerFieldMap: Record<string, { field: string; penalty: number; reason: string }> = {
+      lineup: { field: "lineup", penalty: 25, reason: "Missing lineup data" },
+      stats: { field: "playerStats", penalty: 20, reason: "Missing player statistics" },
+      events: { field: "cardStats", penalty: 10, reason: "Missing card statistics" },
+      referee: { field: "referee", penalty: 5, reason: "Missing referee data" },
+      fixtures: { field: "recentForm", penalty: 10, reason: "Missing recent form data" },
+      h2h: { field: "h2h", penalty: 10, reason: "Missing head-to-head data" },
+      injuries: { field: "injuries", penalty: 10, reason: "Missing injury data" },
+      xg: { field: "xG", penalty: 10, reason: "Missing expected goals data" },
+    };
+
+    for (const provider of readiness.providers) {
+      const mapping = providerFieldMap[provider.id];
+      if (mapping && provider.health !== "healthy") {
+        missingFields.push(mapping.field);
+        degradedReasons.push(mapping.reason);
+        score -= mapping.penalty;
+      }
+    }
+
+    score = Math.max(0, Math.min(100, score));
+    const isLive = readiness.status === "ready" && score >= 60;
+
+    return {
+      score,
+      missingFields,
+      degradedReasons,
+      confidenceCap: score / 100,
+      dataSource: isLive ? "live" : "demo",
+      fallbackMethod: isLive
+        ? null
+        : "Local mock data with default player profiles (Dixon-Coles baseline)",
+    };
+  }
+}
+
+export async function testProviderConnection(
+  providerId: string,
+  fetcher: Fetcher = fetch,
+): Promise<{ ok: boolean; latencyMs: number; detail: string }> {
+  try {
+    const result = await requestJson<{ providerId: string; ok: boolean; latencyMs: number; detail: string }>(
+      "/api/providers/test",
+      { method: "POST", body: JSON.stringify({ providerId }) },
+      fetcher,
+    );
+    return { ok: result.ok, latencyMs: result.latencyMs, detail: result.detail };
+  } catch (err) {
+    return { ok: false, latencyMs: 0, detail: err instanceof Error ? err.message : "Connection failed" };
   }
 }
 
@@ -438,20 +561,39 @@ function buildFeatureContributions(features: string[]): FeatureContribution[] {
 
 function providersToLogs(providers: Array<ProviderItem | (typeof dataProviders)[number]>): ProviderLog[] {
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-  return providers.map((provider) => ({
-    time: provider.lastSync ? new Date(provider.lastSync).toLocaleTimeString("zh-CN", { hour12: false }) : now,
-    source: provider.name,
-    message:
-      provider.status === "active" || provider.status === "connected"
+  const logs: ProviderLog[] = [];
+
+  for (const provider of providers) {
+    // Main status log
+    const isHealthy =
+      provider.status === "active" || provider.status === "connected";
+    const isError = provider.status === "error";
+
+    logs.push({
+      time: provider.lastSync
+        ? new Date(provider.lastSync).toLocaleTimeString("zh-CN", { hour12: false })
+        : now,
+      source: provider.name,
+      message: isHealthy
         ? "Provider reachable; metadata loaded"
-        : provider.status === "error"
+        : isError
           ? "Provider reported an error state"
           : "Provider configured but not connected",
-    status:
-      provider.status === "active" || provider.status === "connected"
-        ? "success"
-        : provider.status === "error"
-          ? "error"
-          : "warning",
-  }));
+      status: isHealthy ? "success" : isError ? "error" : "warning",
+    });
+
+    // Additional error log entry when lastError is present
+    const lastError =
+      "lastError" in provider ? (provider as ProviderItem).lastError : undefined;
+    if (lastError) {
+      logs.push({
+        time: now,
+        source: provider.name,
+        message: lastError,
+        status: "error",
+      });
+    }
+  }
+
+  return logs;
 }

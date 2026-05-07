@@ -17,6 +17,7 @@ import {
   validateScript,
 } from "./forbidden.js";
 import { CARD_RISK_TEMPLATE } from "./templates.js";
+import { generateGroundingReport } from "./grounding.js";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,9 @@ export function generateScript(input: ScriptGenerationInput): ScriptGenerationOu
     throw new Error(`Script validation failed: ${issues.join("; ")}`);
   }
 
+  // Generate grounding report for traceability
+  sanitized.grounding = generateGroundingReport(sanitized, input);
+
   return sanitized;
 }
 
@@ -117,7 +121,12 @@ export async function generateScriptWithLlm(
       bilingualMode: fallback.bilingualMode,
     };
     const validation = validateScript(candidate, input.prediction);
-    return validation.valid && !hasInventedPercentages(candidate, input) ? candidate : fallback;
+    if (validation.valid && !hasInventedPercentages(candidate, input)) {
+      // Regenerate grounding for the accepted LLM rewrite
+      candidate.grounding = generateGroundingReport(candidate, input);
+      return candidate;
+    }
+    return fallback;
   } catch {
     return fallback;
   }

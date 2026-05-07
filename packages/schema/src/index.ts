@@ -255,7 +255,8 @@ export type ProviderCapability =
   | "matchStats"
   | "h2h"
   | "form"
-  | "prediction";
+  | "prediction"
+  | "standings";
 
 /** Capability map: true = fully implemented, false = not available */
 export type ProviderCapabilities = Partial<Record<ProviderCapability, boolean>>;
@@ -283,6 +284,14 @@ export interface Provider {
   capabilities?: ProviderCapabilities;
   /** Overall implementation readiness — absent means "full" for backward compat */
   status?: ProviderStatus;
+  /** ISO 8601 timestamp of the last successful data sync */
+  lastSync?: string;
+  /** Human-readable freshness label, e.g. "2m ago", "stale", "never" */
+  freshness?: string;
+  /** Cumulative error count since last successful sync */
+  errorCount?: number;
+  /** Most recent error message, if any */
+  lastError?: string;
 }
 
 export interface FieldMapping {
@@ -309,3 +318,4 @@ export type FieldTransform =
 // ─── Re-export barrel for consumers ──────────────────────────────────
 
 export * from "./field-map-utils.js";
+export * from "./dataCompleteness.js";

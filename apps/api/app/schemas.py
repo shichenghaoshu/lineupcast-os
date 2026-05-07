@@ -18,10 +18,26 @@ class ReadinessComponent(BaseModel):
     detail: str
 
 
+class ReadinessProvider(BaseModel):
+    id: str
+    name: str
+    status: str
+    errorCount: int = 0
+    lastError: str | None = None
+    lastSuccessfulSync: str | None = None
+    freshness: str = "unknown"
+    health: Literal["healthy", "degraded", "unhealthy"] = "healthy"
+    missingCapabilities: list[str] = Field(default_factory=list)
+    degradedReasons: list[str] = Field(default_factory=list)
+
+
 class ReadinessResponse(BaseModel):
     status: Literal["ready", "degraded"]
     provider: ReadinessComponent
     model: ReadinessComponent
+    providers: list[ReadinessProvider] = []
+    providerFreshness: dict[str, str] = Field(default_factory=dict)
+    errorCount: int = 0
 
 
 class Coordinates(BaseModel):
@@ -216,12 +232,64 @@ class ModelInfo(BaseModel):
     status: str
 
 
+class ModelCardCalibrationBin(BaseModel):
+    lowerBound: float
+    upperBound: float
+    count: int
+    averagePrediction: float
+    observedRate: float
+    gap: float
+
+
+class ModelCardFailureSegment(BaseModel):
+    id: str
+    description: str
+    severity: Literal["warning", "critical"]
+    sampleSize: int
+    segmentBrierScore: float | None = None
+    segmentLogLoss: float | None = None
+
+
+class ModelCardDataSnapshot(BaseModel):
+    provider: str
+    league: str
+    season: str
+    dateRangeStart: str
+    dateRangeEnd: str
+    matchCount: int
+    snapshotCreatedAt: str
+    snapshotVersion: str | None = None
+
+
+class ModelCardMetrics(BaseModel):
+    sampleSize: int
+    brierScore: float
+    brierScoreConfidence: Literal["low", "medium", "high"]
+    logLoss: float
+    logLossConfidence: Literal["low", "medium", "high"]
+    ece: float
+    eceConfidence: Literal["low", "medium", "high"]
+
+
 class ModelCard(BaseModel):
     modelId: str
     name: str
     intendedUse: str
     limitations: list[str]
     features: list[str]
+    # Extended fields for data-snapshot-aware model cards
+    version: str | None = None
+    modelType: str | None = None
+    references: list[str] = []
+    notIntendedFor: list[str] = []
+    outputs: list[str] = []
+    metrics: ModelCardMetrics | None = None
+    calibrationBins: list[ModelCardCalibrationBin] = []
+    failureSegments: list[ModelCardFailureSegment] = []
+    dataSnapshot: ModelCardDataSnapshot | None = None
+    caveats: list[str] = []
+    generatedAt: datetime | None = None
+    schemaVersion: str = "1.0.0"
 
 
 class ModelEvaluation(BaseModel):
@@ -242,6 +310,13 @@ class Provider(BaseModel):
     type: str
     description: str
     status: str
+    errorCount: int = 0
+    lastError: str | None = None
+    lastSuccessfulSync: str | None = None
+    freshness: str = "unknown"
+    health: Literal["healthy", "degraded", "unhealthy"] = "healthy"
+    missingCapabilities: list[str] = Field(default_factory=list)
+    degradedReasons: list[str] = Field(default_factory=list)
 
 
 class ProviderTestRequest(BaseModel):
@@ -278,3 +353,50 @@ class OverlayZone(BaseModel):
 class OverlayLayout(BaseModel):
     matchId: str
     zones: dict[str, OverlayZone]
+
+
+# ---------------------------------------------------------------------------
+# Snapshot schemas
+# ---------------------------------------------------------------------------
+
+
+class MatchSnapshot(BaseModel):
+    """A point-in-time capture of match data from a specific provider."""
+
+    snapshotId: str = Field(
+        description="Unique snapshot identifier (provider_league_season_matchId)."
+    )
+    matchId: str
+    provider: str
+    league: str
+    season: str
+    dataVersion: str = Field(
+        default="1.0.0",
+        description="Schema version of the stored data payload.",
+    )
+    data: dict = Field(
+        default_factory=dict,
+        description="Arbitrary JSON-serialisable match payload.",
+    )
+    savedAt: datetime = Field(
+        default_factory=lambda: datetime.now(),
+        description="UTC timestamp when the snapshot was persisted.",
+    )
+
+
+class SnapshotSaveRequest(BaseModel):
+    """Request body for POST /api/snapshots."""
+
+    matchId: str
+    provider: str
+    league: str
+    season: str
+    dataVersion: str = "1.0.0"
+    data: dict = Field(default_factory=dict)
+
+
+class SnapshotListResponse(BaseModel):
+    """Wrapper returned by GET /api/snapshots."""
+
+    snapshots: list[MatchSnapshot]
+    total: int

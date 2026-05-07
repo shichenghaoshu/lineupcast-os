@@ -50,6 +50,11 @@ export interface DataProvider {
   status: "connected" | "disconnected" | "error";
   lastSync: string | null;
   fields: string[];
+  errorCount?: number;
+  lastError?: string | null;
+  lastSuccessfulSync?: string | null;
+  freshness?: string;
+  health?: "healthy" | "degraded" | "unhealthy";
 }
 
 export interface H2HMatch {

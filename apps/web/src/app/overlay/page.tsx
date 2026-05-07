@@ -1,15 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TopBar } from "@/components/TopBar";
 import { OverlayPreview } from "@/components/OverlayPreview";
-import { manchesterRedXI, currentMatch } from "@/lib/mock-data";
-import { Monitor, Copy, ExternalLink, Download, Image, Check } from "lucide-react";
+import { DemoBadge } from "@/components/DemoBadge";
+import { loadMatch, loadLineups, loadPrediction } from "@/lib/data-loader";
+import type { Match, Player, Prediction } from "@/lib/types";
+import {
+  Monitor,
+  Copy,
+  ExternalLink,
+  Download,
+  Image,
+  Check,
+  Loader2,
+} from "lucide-react";
 
 export default function OverlayPage() {
-  const topScorer = manchesterRedXI.find((p) => p.id === "finish-st")!;
+  const [match, setMatch] = useState<Match | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const obsUrl = `/api/overlay/${currentMatch.id}?scene=lineup`;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      const [m, l, p] = await Promise.all([
+        loadMatch(),
+        loadLineups("match-001"),
+        loadPrediction("match-001"),
+      ]);
+      if (cancelled) return;
+
+      setMatch(m.data);
+      setPlayers(l.data);
+      setPrediction(p.data);
+      setIsDemo(m.isDemo || l.isDemo || p.isDemo);
+      setLoading(false);
+    }
+
+    fetchData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading || !match || !prediction) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent-blue)]" />
+        <span className="ml-2 text-sm text-[var(--text-muted)]">
+          Loading overlay...
+        </span>
+      </div>
+    );
+  }
+
+  const topScorer = players.find((p) => p.id === "finish-st") ?? players[0];
+  const obsUrl = `/api/overlay/${match.id}?scene=lineup`;
 
   function handleCopyUrl() {
     navigator.clipboard.writeText(window.location.origin + obsUrl);
@@ -19,7 +70,14 @@ export default function OverlayPage() {
 
   return (
     <div className="min-h-screen">
-      <TopBar title="OBS Output / 直播输出" subtitle="实时图形输出配置" />
+      <div className="flex items-center justify-between">
+        <TopBar title="OBS Output / 直播输出" subtitle="实时图形输出配置" />
+        {isDemo && (
+          <div className="fixed right-4 top-3 z-50">
+            <DemoBadge />
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6">
         {/* Previews */}
@@ -29,20 +87,39 @@ export default function OverlayPage() {
             <OverlayPreview aspect="16:9" label="Broadcast Scene 16:9">
               <div className="flex h-full w-full flex-col justify-between p-4">
                 <div className="flex items-center justify-between rounded bg-black/60 px-4 py-2">
-                  <span className="text-sm font-bold text-white">Manchester Red</span>
+                  <span className="text-sm font-bold text-white">
+                    {match.homeTeam}
+                  </span>
                   <span className="text-xs text-white/70">VS</span>
-                  <span className="text-sm font-bold text-white">Shanghai Harbor</span>
+                  <span className="text-sm font-bold text-white">
+                    {match.awayTeam}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 rounded bg-black/60 px-3 py-1.5">
                   <span className="text-[10px] text-white/60">胜率</span>
                   <div className="flex flex-1 gap-1">
-                    <div className="h-1 flex-[48] rounded-full bg-emerald-500" />
-                    <div className="h-1 flex-[27] rounded-full bg-amber-500" />
-                    <div className="h-1 flex-[25] rounded-full bg-blue-500" />
+                    <div
+                      className="h-1 rounded-full bg-emerald-500"
+                      style={{ flex: prediction.homeWin }}
+                    />
+                    <div
+                      className="h-1 rounded-full bg-amber-500"
+                      style={{ flex: prediction.draw }}
+                    />
+                    <div
+                      className="h-1 rounded-full bg-blue-500"
+                      style={{ flex: prediction.awayWin }}
+                    />
                   </div>
-                  <span className="text-[10px] text-emerald-400">48%</span>
-                  <span className="text-[10px] text-amber-400">27%</span>
-                  <span className="text-[10px] text-blue-400">25%</span>
+                  <span className="text-[10px] text-emerald-400">
+                    {prediction.homeWin}%
+                  </span>
+                  <span className="text-[10px] text-amber-400">
+                    {prediction.draw}%
+                  </span>
+                  <span className="text-[10px] text-blue-400">
+                    {prediction.awayWin}%
+                  </span>
                 </div>
               </div>
             </OverlayPreview>
@@ -51,14 +128,24 @@ export default function OverlayPage() {
             <OverlayPreview aspect="9:16" label="Short Video Scene 9:16">
               <div className="flex h-full w-full flex-col justify-between p-3">
                 <div className="rounded bg-black/60 px-3 py-2 text-center">
-                  <div className="text-xs font-bold text-white">Manchester Red</div>
+                  <div className="text-xs font-bold text-white">
+                    {match.homeTeam}
+                  </div>
                   <div className="text-[10px] text-white/60">VS</div>
-                  <div className="text-xs font-bold text-white">Shanghai Harbor</div>
+                  <div className="text-xs font-bold text-white">
+                    {match.awayTeam}
+                  </div>
                 </div>
                 <div className="rounded bg-black/60 px-2 py-1.5 text-center">
-                  <div className="text-[10px] text-emerald-400">主胜 48%</div>
-                  <div className="text-[10px] text-amber-400">平局 27%</div>
-                  <div className="text-[10px] text-blue-400">客胜 25%</div>
+                  <div className="text-[10px] text-emerald-400">
+                    主胜 {prediction.homeWin}%
+                  </div>
+                  <div className="text-[10px] text-amber-400">
+                    平局 {prediction.draw}%
+                  </div>
+                  <div className="text-[10px] text-blue-400">
+                    客胜 {prediction.awayWin}%
+                  </div>
                 </div>
               </div>
             </OverlayPreview>
@@ -87,11 +174,11 @@ export default function OverlayPage() {
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 rounded bg-[var(--bg-primary)] p-4">
               <div className="flex flex-col items-center gap-1">
-                <div className="text-sm font-bold">Manchester Red</div>
+                <div className="text-sm font-bold">{match.homeTeam}</div>
                 <div className="text-xs text-[var(--text-muted)]">4-2-3-1</div>
               </div>
               <div className="flex flex-1 flex-wrap gap-1.5">
-                {manchesterRedXI.map((p) => (
+                {players.map((p) => (
                   <div
                     key={p.id}
                     className="flex items-center gap-1 rounded bg-[var(--bg-card)] px-2 py-1"
@@ -124,7 +211,9 @@ export default function OverlayPage() {
               </div>
               <div className="ml-auto text-right">
                 <div className="text-xs text-[var(--text-muted)]">进球概率</div>
-                <div className="text-lg font-bold text-[var(--accent-green)]">34%</div>
+                <div className="text-lg font-bold text-[var(--accent-green)]">
+                  {prediction.possibleScorers[0]?.probability ?? 0}%
+                </div>
               </div>
             </div>
           </div>
@@ -167,7 +256,11 @@ export default function OverlayPage() {
               onClick={handleCopyUrl}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
             >
-              {copied ? <Check className="h-3 w-3 text-[var(--accent-green)]" /> : <Copy className="h-3 w-3" />}
+              {copied ? (
+                <Check className="h-3 w-3 text-[var(--accent-green)]" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
               {copied ? "已复制!" : "复制 Browser Source URL"}
             </button>
           </div>

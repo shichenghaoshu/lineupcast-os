@@ -14,6 +14,9 @@ export {
   listProviders,
   listReadyProviders,
   registerProvider,
+  getFreshnessTracker,
+  getProviderFreshness,
+  getAllProviderFreshness,
 } from "./registry.js";
 export {
   RateLimiter,
@@ -21,3 +24,22 @@ export {
   API_FOOTBALL_LIMITER,
   OPEN_FOOTBALL_LIMITER,
 } from "./rate-limiter.js";
+export { FreshnessTracker } from "./freshness.js";
+export type { ProviderFreshnessData } from "./freshness.js";
+
+// ─── Unified contract ────────────────────────────────────────────────
+export type {
+  FootballDataProvider,
+  ProviderCapabilities,
+  Fixture,
+  MatchDetail,
+  MatchEvent,
+  MatchStatistics,
+  MatchResult,
+  H2HResult,
+  SquadPlayer,
+  LineupInfo,
+  PlayerStats,
+  ProviderHealthStatus,
+} from "./contracts.js";
+export { ContractAdapter, CapabilityError } from "./contract-adapter.js";

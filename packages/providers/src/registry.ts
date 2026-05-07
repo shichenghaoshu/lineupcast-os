@@ -10,9 +10,13 @@ import {
   SportmonksProvider,
   ApiFootballProvider,
 } from "./adapters.js";
+import { FreshnessTracker, type ProviderFreshnessData } from "./freshness.js";
 
 /** All registered provider instances */
 const providers: Map<string, DataProvider> = new Map();
+
+/** Singleton tracker for per-provider sync freshness */
+const freshnessTracker = new FreshnessTracker();
 
 function register(provider: DataProvider): void {
   providers.set(provider.id, provider);
@@ -35,7 +39,10 @@ export function getProvider(id: string): DataProvider {
 
 /** List all registered provider metadata (safe — no token values) */
 export function listProviders(): Provider[] {
-  return Array.from(providers.values()).map((p) => p.meta);
+  return Array.from(providers.values()).map((p) => {
+    const freshness = freshnessTracker.getFreshness(p.id);
+    return { ...p.meta, ...freshness };
+  });
 }
 
 /** List only providers that are ready to use (token present or not required, not placeholder) */
@@ -66,4 +73,19 @@ export function listProvidersByCapability(required: ProviderCapability[]): Provi
 /** Register a custom provider at runtime */
 export function registerProvider(provider: DataProvider): void {
   register(provider);
+}
+
+/** Get the singleton FreshnessTracker instance */
+export function getFreshnessTracker(): FreshnessTracker {
+  return freshnessTracker;
+}
+
+/** Get freshness data for a specific provider */
+export function getProviderFreshness(providerId: string): ProviderFreshnessData {
+  return freshnessTracker.getFreshness(providerId);
+}
+
+/** Get freshness data for all providers */
+export function getAllProviderFreshness(): Map<string, ProviderFreshnessData> {
+  return freshnessTracker.getAllFreshness();
 }
