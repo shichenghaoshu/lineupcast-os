@@ -2,8 +2,6 @@
 
 > Open-source football pre-match commentary data cockpit — turn raw match data into broadcast-ready talking points.
 
-<!-- screenshot placeholder: dashboard-overview.png -->
-
 ## Features
 
 - **Match Dashboard** — aggregated pre-match data for upcoming fixtures
@@ -12,9 +10,6 @@
 - **Prediction Engine** — open-source xG-based model for match outcome probabilities
 - **AI Script Generator** — turn stats into structured commentary scripts
 - **Overlay Renderer** — export broadcast-ready graphics as PNG/HTML
-
-<!-- screenshot placeholder: h2h-explorer.png -->
-<!-- screenshot placeholder: prediction-panel.png -->
 
 ## Tech Stack
 
@@ -32,7 +27,7 @@
 # Prerequisites: Node 20+, pnpm 9+, Python 3.11+, PostgreSQL 16+
 
 # Clone and install
-git clone https://github.com/your-org/lineupcast-os.git
+git clone https://github.com/shichenghaoshu/lineupcast-os.git
 cd lineupcast-os
 cp .env.example .env
 make install
@@ -88,13 +83,17 @@ LineupCast OS is an **educational and analytical tool**. It is not a betting ser
 
 ## Roadmap
 
-- [x] Core match dashboard with form and H2H views
-- [x] xG-Poisson prediction model v1
-- [x] AI script generation from match stats
-- [x] Overlay renderer for broadcast graphics
-- [x] Live data provider integrations
-- [x] Mobile-responsive layout
-- [x] Multi-league support
+See [`docs/current-review-and-roadmap.md`](docs/current-review-and-roadmap.md) for the current code review, known risks, and future roadmap.
+
+Current status:
+
+- [x] Demo match dashboard with form, H2H, prediction, lineup, script, data-source, and overlay screens
+- [x] Deterministic prediction package with Dixon-Coles, scorer, card-risk, calibration, and backtest utilities
+- [x] FastAPI demo API with health/readiness, script, prediction, model, provider, import, and overlay contracts
+- [x] Python-to-TypeScript bridge scripts for local prediction and script generation
+- [ ] Production data persistence and auth for write/admin endpoints
+- [ ] One fully complete live provider path for fixtures, squads, lineups, form, H2H, and match stats
+- [ ] Published calibration reports by league and season
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 // @lineupcast/ai-script — prompt templates for AI/LLM rewriting
 
-import type { ScriptDuration, ScriptLanguage, ScriptStyle } from "./types";
+import type { ScriptDuration, ScriptLanguage, ScriptStyle } from "./types.js";
 
 /**
  * System prompt for AI/LLM script rewriting.

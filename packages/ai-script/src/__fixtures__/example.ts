@@ -1,6 +1,6 @@
 // @lineupcast/ai-script — Chinese example fixture for testing
 
-import type { ScriptInput } from "../types";
+import type { ScriptInput } from "../types.js";
 
 /**
  * 2024-25 英超：利物浦 vs 阿森纳

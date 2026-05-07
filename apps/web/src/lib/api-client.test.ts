@@ -41,4 +41,27 @@ describe("web api client", () => {
     expect(result.fallback).toBe(true);
     expect(result.script).toBe("Generated script");
   });
+
+  it("returns a local script fallback when both API script endpoints fail", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("not found", { status: 404 }))
+      .mockRejectedValueOnce(new Error("network down"));
+
+    const result = await generateScript(
+      "demo",
+      {
+        language: "bilingual",
+        style: "broadcast",
+        duration: "30s",
+      },
+      fetcher,
+    );
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result.fallback).toBe(true);
+    expect(result.provider).toBe("local-web-fallback");
+    expect(result.script).toContain("Manchester Red");
+    expect(result.script).toContain("Shanghai Harbor");
+  });
 });

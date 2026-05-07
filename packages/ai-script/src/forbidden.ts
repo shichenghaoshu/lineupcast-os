@@ -1,6 +1,6 @@
 // @lineupcast/ai-script — forbidden phrase blocking and cautious language enforcement
 
-import type { ScriptSections } from "./types";
+import type { ScriptSections } from "./types.js";
 
 /**
  * Phrases that must never appear in generated scripts.

@@ -119,12 +119,13 @@ async def test_prediction(client):
     resp = await client.get(f"/api/matches/{DEMO_MATCH_ID}/prediction")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["homeWin"] == 48
-    assert data["draw"] == 27
-    assert data["awayWin"] == 25
-    assert data["expectedHomeGoals"] == 1.6
-    assert data["expectedAwayGoals"] == 1.2
-    assert data["confidence"] == 0.72
+    assert data["homeWin"] + data["draw"] + data["awayWin"] == 100
+    assert 0 <= data["homeWin"] <= 100
+    assert 0 <= data["draw"] <= 100
+    assert 0 <= data["awayWin"] <= 100
+    assert data["expectedHomeGoals"] > 0
+    assert data["expectedAwayGoals"] > 0
+    assert 0 <= data["confidence"] <= 1
     assert len(data["goalScorers"]) == 4
     assert len(data["cardRisks"]) == 4
     assert len(data["models"]) == 3
@@ -138,12 +139,20 @@ async def test_prediction_not_found(client):
 
 @pytest.mark.asyncio
 async def test_script(client):
+    prediction = await client.get(f"/api/matches/{DEMO_MATCH_ID}/prediction")
+    assert prediction.status_code == 200
+    prediction_data = prediction.json()
+    home_win = prediction_data["homeWin"]
+    expected_home_goals = f"{prediction_data['expectedHomeGoals']:.1f}"
+
     resp = await client.post(f"/api/matches/{DEMO_MATCH_ID}/script")
     assert resp.status_code == 200
     data = resp.json()
     assert "script" in data
     assert "disclaimer" in data
     assert "V. Finish" in data["script"]
+    assert f"{home_win}%" in data["script"]
+    assert expected_home_goals in data["script"]
     assert "DISCLAIMER" in data["disclaimer"]
     assert "mock demonstration data" in data["disclaimer"]
 

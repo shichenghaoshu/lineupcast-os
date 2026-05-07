@@ -201,7 +201,7 @@ export async function generateScript(
   fetcher: Fetcher = fetch,
 ): Promise<ScriptResult> {
   const started = Date.now();
-  const body = JSON.stringify(request);
+  const body = JSON.stringify({ ...request, tone: request.style });
 
   try {
     const data = await requestJson<Partial<ScriptResult>>(
@@ -211,12 +211,16 @@ export async function generateScript(
     );
     return normalizeScriptResult(data, matchId, Date.now() - started, false);
   } catch {
-    const data = await requestJson<Partial<ScriptResult>>(
-      `/api/matches/${matchId}/script`,
-      { method: "POST", body },
-      fetcher,
-    );
-    return normalizeScriptResult(data, matchId, Date.now() - started, true);
+    try {
+      const data = await requestJson<Partial<ScriptResult>>(
+        `/api/matches/${matchId}/script`,
+        { method: "POST", body },
+        fetcher,
+      );
+      return normalizeScriptResult(data, matchId, Date.now() - started, true);
+    } catch {
+      return buildLocalScriptFallback(matchId, request, Date.now() - started);
+    }
   }
 }
 
@@ -270,6 +274,42 @@ function normalizeScriptResult(
     model: data.model ?? "deterministic-script-template",
     latencyMs: data.latencyMs ?? latencyMs,
     fallback: data.fallback ?? fallback,
+  };
+}
+
+function buildLocalScriptFallback(
+  matchId: string,
+  request: ScriptRequest,
+  latencyMs: number,
+): ScriptResult {
+  const homeTeam = currentMatch.homeTeam;
+  const awayTeam = currentMatch.awayTeam;
+  const leadingScorer = matchPrediction.possibleScorers[0]?.name ?? "the lead forward";
+  const english =
+    `${homeTeam} host ${awayTeam}. The local fallback keeps the briefing usable: ` +
+    `home win ${matchPrediction.homeWin}%, draw ${matchPrediction.draw}%, away win ${matchPrediction.awayWin}%, ` +
+    `with projected xG ${matchPrediction.expectedHomeGoals} to ${matchPrediction.expectedAwayGoals}. ` +
+    `Watch ${leadingScorer} as the main scorer focus.`;
+  const chinese =
+    `${homeTeam} 对阵 ${awayTeam}。本地降级稿保留核心数据：主胜 ${matchPrediction.homeWin}%，` +
+    `平局 ${matchPrediction.draw}%，客胜 ${matchPrediction.awayWin}%，预计 xG 为 ` +
+    `${matchPrediction.expectedHomeGoals} 比 ${matchPrediction.expectedAwayGoals}。重点关注 ${leadingScorer}。`;
+
+  const script =
+    request.language === "zh"
+      ? chinese
+      : request.language === "bilingual"
+        ? `${english}\n\n${chinese}`
+        : english;
+
+  return {
+    matchId,
+    script,
+    disclaimer: "Local fallback generated from bundled demo data because the API script endpoints were unavailable.",
+    provider: "local-web-fallback",
+    model: `local-template-${request.style}-${request.duration}`,
+    latencyMs,
+    fallback: true,
   };
 }
 

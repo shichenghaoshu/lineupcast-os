@@ -6,6 +6,7 @@ import {
   poissonPmf,
   predictCardRisk,
   predictDixonColesFromHistory,
+  predictMatch,
   predictTopGoalScorers,
   runBacktest,
 } from "../index.js";
@@ -116,5 +117,35 @@ describe("real algorithm layer", () => {
     expect(result.metrics.brierScore.score).toBeGreaterThanOrEqual(0);
     expect(result.modelName).toBe("dixon-coles-backtest");
     expect(result.evidence.matchesEvaluated).toBe(2);
+  });
+
+  it("exposes a bridge-safe match prediction wrapper", () => {
+    const result = predictMatch({
+      matchId: "demo",
+      homeTeam: { teamId: "HOME", name: "Home" },
+      awayTeam: { teamId: "AWAY", name: "Away" },
+      lineups: {
+        home: {
+          teamName: "Home",
+          players: [
+            { name: "Home Nine", position: "ST", recentRating: 8, xGLast5: 1.5, shotsLast5: 12, foulsPer90: 0.8, yellowCardsLast10: 1, vaepAttack: 0.8, vaepDefense: 0.1 },
+            { name: "Home Six", position: "DM", recentRating: 7, xGLast5: 0.2, shotsLast5: 3, foulsPer90: 2.8, yellowCardsLast10: 4, vaepAttack: 0.2, vaepDefense: 0.7 },
+          ],
+        },
+        away: {
+          teamName: "Away",
+          players: [
+            { name: "Away Nine", position: "ST", recentRating: 7, xGLast5: 0.9, shotsLast5: 8, foulsPer90: 0.9, yellowCardsLast10: 1, vaepAttack: 0.6, vaepDefense: 0.1 },
+            { name: "Away Five", position: "CB", recentRating: 6.8, xGLast5: 0.1, shotsLast5: 1, foulsPer90: 2.2, yellowCardsLast10: 3, vaepAttack: 0.1, vaepDefense: 0.65 },
+          ],
+        },
+      },
+    });
+
+    expect(result.matchId).toBe("demo");
+    expect(result.homeWin + result.draw + result.awayWin).toBe(100);
+    expect(result.goalScorers.length).toBeGreaterThan(0);
+    expect(result.cardRisks.length).toBeGreaterThan(0);
+    expect(result.models[0]?.name).toContain("Dixon-Coles");
   });
 });

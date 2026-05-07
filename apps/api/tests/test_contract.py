@@ -32,6 +32,21 @@ async def test_healthz_and_readyz(client):
 
 
 @pytest.mark.asyncio
+async def test_default_cors_does_not_allow_credentials_with_wildcard(client):
+    response = await client.options(
+        "/api/matches",
+        headers={
+            "Origin": "https://studio.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_matches_import_and_lookup(client):
     listed = await client.get("/api/matches")
     assert listed.status_code == 200

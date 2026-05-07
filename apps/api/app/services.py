@@ -273,6 +273,7 @@ def _script_body(language: ScriptLanguage, prediction: PredictionResponse) -> tu
 
 
 _VALID_STYLES = {"professional", "short-video", "passionate", "neutral", "broadcast"}
+_VALID_DURATIONS = {"15s", "30s", "1min", "3min"}
 
 
 def _map_confidence(confidence: float | str) -> str:
@@ -308,7 +309,9 @@ def _build_script_input(
     home_team = match.get("homeTeam", {})
     away_team = match.get("awayTeam", {})
     competition = match.get("competition", "")
-    style = payload.tone if payload.tone in _VALID_STYLES else "broadcast"
+    requested_style = payload.style or payload.tone
+    style = requested_style if requested_style in _VALID_STYLES else "broadcast"
+    duration = payload.duration if payload.duration in _VALID_DURATIONS else "30s"
     language = (
         payload.language.value
         if hasattr(payload.language, "value")
@@ -364,7 +367,7 @@ def _build_script_input(
             for cr in raw_prediction.get("cardRisks", [])
         ],
         "style": style,
-        "duration": "30s",
+        "duration": duration,
         "language": language,
     }
 
@@ -387,7 +390,9 @@ def generate_script(
     # ── Try the real ai-script bridge first ──────────────────────────────
     match = MATCHES.get(match_id)
     if match is not None:
-        script_input = _build_script_input(match_id, match, PREDICTION, payload)
+        script_input = _build_script_input(
+            match_id, match, prediction.model_dump(mode="json"), payload
+        )
         if script_input is not None:
             bridge_result = call_script_generator(script_input)
             if bridge_result is not None:

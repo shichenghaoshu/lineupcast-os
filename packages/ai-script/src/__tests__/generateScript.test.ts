@@ -1,18 +1,18 @@
 // @lineupcast/ai-script — tests for generateScript
 
 import { describe, it, expect } from "vitest";
-import { generateScript, generateScriptWithLlm } from "../generateScript";
-import type { ScriptInput, ScriptOutput, ScriptStyle, ScriptDuration } from "../types";
+import { generateScript, generateScriptWithLlm } from "../generateScript.js";
+import type { ScriptInput, ScriptOutput, ScriptStyle, ScriptDuration } from "../types.js";
 import {
   sanitizeForbiddenPhrases,
   detectForbiddenPhrases,
   validateScript,
   validateProbabilitiesInText,
   hasModelSourceCitation,
-} from "../forbidden";
-import { SYSTEM_PROMPT, DURATION_PROMPTS, STYLE_PROMPTS, buildPrompt, SCRIPT_TEMPLATES } from "../templates";
-import { scriptOutputSchema } from "../schema";
-import { EXAMPLE_INPUT } from "../__fixtures__/example";
+} from "../forbidden.js";
+import { SYSTEM_PROMPT, DURATION_PROMPTS, STYLE_PROMPTS, buildPrompt, SCRIPT_TEMPLATES } from "../templates.js";
+import { scriptOutputSchema } from "../schema.js";
+import { EXAMPLE_INPUT } from "../__fixtures__/example.js";
 
 // ── Shared test fixture builder ───────────────────────────────────────────────
 

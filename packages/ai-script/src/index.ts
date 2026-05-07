@@ -15,9 +15,9 @@ export type {
   PlayerCoordinates,
   GoalScorer,
   CardRisk,
-} from "./types";
+} from "./types.js";
 
-export { generateScript, generateScriptWithLlm } from "./generateScript";
+export { generateScript, generateScriptWithLlm } from "./generateScript.js";
 
 export {
   sanitizeForbiddenPhrases,
@@ -30,7 +30,7 @@ export {
   FORBIDDEN_REPLACEMENTS,
   MODEL_SOURCE_ZH,
   MODEL_SOURCE_EN,
-} from "./forbidden";
+} from "./forbidden.js";
 
 export {
   SYSTEM_PROMPT,
@@ -40,8 +40,8 @@ export {
   PLAYER_INTRO_TEMPLATE,
   CARD_RISK_TEMPLATE,
   SCRIPT_TEMPLATES,
-} from "./templates";
+} from "./templates.js";
 
-export { scriptOutputSchema } from "./schema";
+export { scriptOutputSchema } from "./schema.js";
 
-export type { ValidationResult } from "./forbidden";
+export type { ValidationResult } from "./forbidden.js";

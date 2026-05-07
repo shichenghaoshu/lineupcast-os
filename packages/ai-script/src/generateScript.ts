@@ -10,13 +10,13 @@ import type {
   LineupPlayer,
   GoalScorer,
   CardRisk,
-} from "./types";
+} from "./types.js";
 import {
   sanitizeForbiddenPhrases,
   ensureModelSourceCitation,
   validateScript,
-} from "./forbidden";
-import { CARD_RISK_TEMPLATE } from "./templates";
+} from "./forbidden.js";
+import { CARD_RISK_TEMPLATE } from "./templates.js";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 

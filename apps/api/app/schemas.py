@@ -172,6 +172,14 @@ class ScriptLanguage(str, Enum):
 class ScriptGenerateRequest(BaseModel):
     language: ScriptLanguage = ScriptLanguage.en
     tone: str = "broadcast"
+    style: Literal[
+        "professional",
+        "short-video",
+        "passionate",
+        "neutral",
+        "broadcast",
+    ] | None = None
+    duration: Literal["15s", "30s", "1min", "3min"] = "30s"
 
 
 class ScriptTranslateRequest(BaseModel):
