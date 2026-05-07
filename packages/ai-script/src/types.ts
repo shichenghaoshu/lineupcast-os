@@ -59,6 +59,11 @@ export interface CardRisk {
 // ── Grounding types ──
 
 /**
+ * Category of data source for grounding traceability.
+ */
+export type SourceType = "prediction" | "lineup" | "stats" | "form";
+
+/**
  * A reference to a specific input field that contributed to a sentence.
  * Field paths use JSON pointer notation (e.g., "prediction.homeWin", "lineups.home.teamName").
  */
@@ -69,6 +74,14 @@ export interface SourceRef {
   value: unknown;
   /** Which provider supplied this field (e.g., "lineup-provider", "prediction-model") */
   provider: string;
+  /** High-level category of the data source */
+  sourceType?: SourceType;
+  /** JSON-pointer-style path (alias for field, for grounding report clarity) */
+  sourcePath?: string;
+  /** The raw value from the source (alias for value, for grounding report clarity) */
+  sourceValue?: unknown;
+  /** Per-source confidence score (0-1) indicating data reliability */
+  confidence?: number;
 }
 
 /**
@@ -132,6 +145,8 @@ export interface ScriptGenerationOutput extends ScriptSections {
   audience?: string;
   bilingualMode?: BilingualMode;
   grounding?: GroundingReport[];
+  /** Disclaimer text included in all outputs. AI narrates, never predicts. */
+  disclaimer: string;
 }
 
 export type ScriptInput = ScriptGenerationInput;

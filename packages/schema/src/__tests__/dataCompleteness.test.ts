@@ -3,6 +3,8 @@ import {
   computeDataCompleteness,
   fullDataInput,
   emptyDataInput,
+  COMPLETENESS_WARNING_THRESHOLD,
+  NARRATIVE_ONLY_THRESHOLD,
 } from "../dataCompleteness.js";
 import type { DataCompletenessInput } from "../dataCompleteness.js";
 
@@ -19,21 +21,21 @@ describe("computeDataCompleteness", () => {
   it("returns score 100 when all data is present", () => {
     const result = computeDataCompleteness(fullDataInput());
     expect(result.score).toBe(100);
+    expect(result.mode).toBe("full");
     expect(result.confidenceCap).toBe(1);
     expect(result.degradedReasons).toHaveLength(0);
   });
 
-  it("returns score 0 when no data is present — nothing allowed", () => {
+  it("returns score 0 with no_prediction mode when fixture is missing", () => {
     const result = computeDataCompleteness(emptyDataInput());
     expect(result.score).toBe(0);
+    expect(result.mode).toBe("no_prediction");
     expect(result.confidenceCap).toBe(0);
-    expect(result.allowedPredictionOutputs).toEqual({
-      preciseProbabilities: false,
-      scorerRanking: false,
-      cardRiskLevel: false,
-      playerRatingAdjustment: false,
-      refereeImpact: false,
-    });
+    expect(result.allowedPredictionOutputs.noPrediction).toBe(true);
+    expect(result.allowedPredictionOutputs.narrativeOnly).toBe(true);
+    expect(result.degradedReasons).toContain(
+      "Missing fixture data — no prediction possible",
+    );
   });
 
   it("applies -25 penalty for missing lineup", () => {
@@ -50,49 +52,49 @@ describe("computeDataCompleteness", () => {
     expect(result.degradedReasons).toContain("Missing player statistics");
   });
 
-  it("applies -10 penalty for missing card stats", () => {
+  it("applies -15 penalty for missing card stats", () => {
     const result = computeDataCompleteness(
       withOverrides({ hasCardStats: false }),
     );
-    expect(result.score).toBe(90);
+    expect(result.score).toBe(85);
     expect(result.degradedReasons).toContain("Missing card statistics");
   });
 
-  it("applies -5 penalty for missing referee", () => {
+  it("applies -10 penalty for missing referee", () => {
     const result = computeDataCompleteness(
       withOverrides({ hasReferee: false }),
     );
-    expect(result.score).toBe(95);
+    expect(result.score).toBe(90);
     expect(result.degradedReasons).toContain(
       "Missing referee data — using league average",
     );
   });
 
-  it("applies -10 penalty for missing recent form", () => {
+  it("applies -15 penalty for missing recent form", () => {
     const result = computeDataCompleteness(
       withOverrides({ hasRecentForm: false }),
     );
-    expect(result.score).toBe(90);
+    expect(result.score).toBe(85);
     expect(result.degradedReasons).toContain("Missing recent form data");
   });
 
-  it("applies -10 penalty for missing H2H", () => {
+  it("applies -5 penalty for missing H2H", () => {
     const result = computeDataCompleteness(withOverrides({ hasH2H: false }));
-    expect(result.score).toBe(90);
+    expect(result.score).toBe(95);
     expect(result.degradedReasons).toContain("Missing head-to-head data");
   });
 
-  it("applies -10 penalty for missing injuries", () => {
+  it("applies -5 penalty for missing injuries", () => {
     const result = computeDataCompleteness(
       withOverrides({ hasInjuries: false }),
     );
-    expect(result.score).toBe(90);
+    expect(result.score).toBe(95);
     expect(result.degradedReasons).toContain("Missing injury data");
   });
 
-  it("applies -10 penalty for missing xG", () => {
+  it("applies -5 penalty for missing xG", () => {
     const result = computeDataCompleteness(withOverrides({ hasXG: false }));
-    expect(result.score).toBe(90);
+    expect(result.score).toBe(95);
     expect(result.degradedReasons).toContain(
       "Missing expected goals (xG) data",
     );
@@ -105,30 +107,109 @@ describe("computeDataCompleteness", () => {
       withOverrides({
         hasLineup: false, // -25
         hasPlayerStats: false, // -20
-        hasXG: false, // -10
+        hasXG: false, // -5
       }),
     );
-    // 100 - 25 - 20 - 10 = 45
-    expect(result.score).toBe(45);
+    // 100 - 25 - 20 - 5 = 50
+    expect(result.score).toBe(50);
     expect(result.degradedReasons).toHaveLength(3);
   });
 
   it("clamps score at 0 even when penalties exceed 100", () => {
-    const result = computeDataCompleteness(emptyDataInput());
-    // All penalties: 25+20+10+5+10+10+10+10 = 100, so score = 0
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasReferee: false,
+        hasRecentForm: false,
+        hasH2H: false,
+        hasInjuries: false,
+        hasXG: false,
+      }),
+    );
     expect(result.score).toBe(0);
     expect(result.score).toBeGreaterThanOrEqual(0);
   });
 
-  // ── Confidence cap ────────────────────────────────────────────────
+  // ── Tiered confidence cap ────────────────────────────────────────
 
-  it("confidenceCap equals score / 100", () => {
+  it("uses cap 1.0 when score >= 80", () => {
+    const result = computeDataCompleteness(
+      withOverrides({ hasXG: false }), // 100 - 5 = 95
+    );
+    expect(result.score).toBe(95);
+    expect(result.confidenceCap).toBe(1.0);
+  });
+
+  it("uses cap 0.85 when score is 60-79", () => {
+    // 100 - 25 (lineup) - 15 (form) = 60
     const result = computeDataCompleteness(
       withOverrides({ hasLineup: false, hasRecentForm: false }),
     );
-    // 100 - 25 - 10 = 65
-    expect(result.score).toBe(65);
-    expect(result.confidenceCap).toBeCloseTo(0.65);
+    expect(result.score).toBe(60);
+    expect(result.confidenceCap).toBe(0.85);
+  });
+
+  it("uses cap 0.70 when score is 40-59", () => {
+    // 100 - 25 - 20 = 55
+    const result = computeDataCompleteness(
+      withOverrides({ hasLineup: false, hasPlayerStats: false }),
+    );
+    expect(result.score).toBe(55);
+    expect(result.confidenceCap).toBe(0.7);
+  });
+
+  it("uses cap 0.50 when score < 40", () => {
+    // 100 - 25 - 20 - 15 - 10 = 30
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasReferee: false,
+      }),
+    );
+    expect(result.score).toBe(30);
+    expect(result.confidenceCap).toBe(0.5);
+  });
+
+  // ── Mode determination ───────────────────────────────────────────
+
+  it("returns mode 'full' when score >= 60", () => {
+    const result = computeDataCompleteness(fullDataInput());
+    expect(result.mode).toBe("full");
+  });
+
+  it("returns mode 'warning' when score is 40-59", () => {
+    // 100 - 25 - 20 = 55
+    const result = computeDataCompleteness(
+      withOverrides({ hasLineup: false, hasPlayerStats: false }),
+    );
+    expect(result.score).toBe(55);
+    expect(result.mode).toBe("warning");
+  });
+
+  it("returns mode 'narrative_only' when score < 40", () => {
+    // 100 - 25 - 20 - 15 - 10 = 30
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasReferee: false,
+      }),
+    );
+    expect(result.score).toBe(30);
+    expect(result.mode).toBe("narrative_only");
+  });
+
+  it("returns mode 'no_prediction' when fixture is missing", () => {
+    const result = computeDataCompleteness(
+      withOverrides({ hasFixture: false }),
+    );
+    expect(result.mode).toBe("no_prediction");
+    expect(result.score).toBe(0);
   });
 
   // ── Allowed prediction outputs ────────────────────────────────────
@@ -141,6 +222,9 @@ describe("computeDataCompleteness", () => {
       cardRiskLevel: true,
       playerRatingAdjustment: true,
       refereeImpact: true,
+      noExactProbability: false,
+      narrativeOnly: false,
+      noPrediction: false,
     });
   });
 
@@ -149,11 +233,11 @@ describe("computeDataCompleteness", () => {
       withOverrides({
         hasLineup: false, // -25
         hasPlayerStats: false, // -20
-        hasXG: false, // -10
+        hasXG: false, // -5
       }),
     );
-    // score = 45
-    expect(result.score).toBe(45);
+    // score = 50
+    expect(result.score).toBe(50);
     expect(result.allowedPredictionOutputs.preciseProbabilities).toBe(false);
   });
 
@@ -185,6 +269,39 @@ describe("computeDataCompleteness", () => {
     expect(result.allowedPredictionOutputs.refereeImpact).toBe(false);
   });
 
+  it("sets noExactProbability when hasRecentForm is false", () => {
+    const result = computeDataCompleteness(
+      withOverrides({ hasRecentForm: false }),
+    );
+    expect(result.allowedPredictionOutputs.noExactProbability).toBe(true);
+  });
+
+  it("sets narrativeOnly when mode is narrative_only", () => {
+    // 100 - 25 - 20 - 15 - 10 = 30
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasReferee: false,
+      }),
+    );
+    expect(result.mode).toBe("narrative_only");
+    expect(result.allowedPredictionOutputs.narrativeOnly).toBe(true);
+  });
+
+  it("sets noPrediction when fixture is missing", () => {
+    const result = computeDataCompleteness(
+      withOverrides({ hasFixture: false }),
+    );
+    expect(result.allowedPredictionOutputs.noPrediction).toBe(true);
+    expect(result.allowedPredictionOutputs.preciseProbabilities).toBe(false);
+    expect(result.allowedPredictionOutputs.scorerRanking).toBe(false);
+    expect(result.allowedPredictionOutputs.cardRiskLevel).toBe(false);
+    expect(result.allowedPredictionOutputs.playerRatingAdjustment).toBe(false);
+    expect(result.allowedPredictionOutputs.refereeImpact).toBe(false);
+  });
+
   // ── Missing fields pass-through ───────────────────────────────────
 
   it("passes through the missingFields array from input", () => {
@@ -196,7 +313,19 @@ describe("computeDataCompleteness", () => {
   // ── Degraded reasons ─────────────────────────────────────────────
 
   it("populates degradedReasons for every missing data source", () => {
-    const result = computeDataCompleteness(emptyDataInput());
+    // Use hasFixture: true to avoid the no_prediction early return
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasReferee: false,
+        hasRecentForm: false,
+        hasH2H: false,
+        hasInjuries: false,
+        hasXG: false,
+      }),
+    );
     expect(result.degradedReasons).toEqual([
       "Missing lineup data",
       "Missing player statistics",
@@ -220,30 +349,23 @@ describe("computeDataCompleteness", () => {
     expect(result.degradedReasons).toHaveLength(2);
   });
 
-  // ── Edge case: exactly score 60 ───────────────────────────────────
+  // ── Edge case: exactly score 60 (warning threshold) ──────────────
 
   it("allows preciseProbabilities at exactly score 60", () => {
-    // 100 - 25 (lineup) - 10 (form) - 5 (referee) = 60
+    // 100 - 25 (lineup) - 15 (form) = 60
     const result = computeDataCompleteness(
       withOverrides({
         hasLineup: false,
         hasRecentForm: false,
-        hasReferee: false,
       }),
     );
     expect(result.score).toBe(60);
+    expect(result.mode).toBe("full");
     expect(result.allowedPredictionOutputs.preciseProbabilities).toBe(true);
   });
 
-  it("disables preciseProbabilities at score 59", () => {
-    // 100 - 25 (lineup) - 10 (form) - 5 (referee) - 1 (need 1 more)
-    // Use: lineup(-25) + form(-10) + referee(-5) + cardStats(-10) = 50
-    // That's too low. Instead: lineup(-25) + form(-10) + h2h(-10) = 55, still < 60
-    // lineup(-25) + cardStats(-10) + referee(-5) = 60. Let's add h2h(-10) = 50.
-    // We need exactly 41 deducted. lineup(25) + playerStats(20) = 45 -> 55.
-    // lineup(25) + cardStats(10) + referee(5) + injuries(10) = 50 -> 50.
-    // Actually: 100 - 25 - 10 - 5 - 1 = ? We don't have a -1 penalty.
-    // Closest below 60: lineup(-25) + playerStats(-20) = 55
+  it("disables preciseProbabilities at score 55", () => {
+    // 100 - 25 (lineup) - 20 (playerStats) = 55
     const result = computeDataCompleteness(
       withOverrides({
         hasLineup: false,
@@ -251,13 +373,55 @@ describe("computeDataCompleteness", () => {
       }),
     );
     expect(result.score).toBe(55);
+    expect(result.mode).toBe("warning");
     expect(result.allowedPredictionOutputs.preciseProbabilities).toBe(false);
+  });
+
+  // ── Edge case: exactly score 40 (narrative threshold) ─────────────
+
+  it("is mode 'warning' at exactly score 40", () => {
+    // 100 - 25 - 20 - 15 - 5(h2h) = 35. Need 40.
+    // 100 - 25 - 20 - 15 = 40
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+      }),
+    );
+    expect(result.score).toBe(40);
+    expect(result.mode).toBe("warning");
+  });
+
+  it("is mode 'narrative_only' at score 35", () => {
+    // 100 - 25 - 20 - 15 - 5 = 35
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasLineup: false,
+        hasPlayerStats: false,
+        hasCardStats: false,
+        hasH2H: false,
+      }),
+    );
+    expect(result.score).toBe(35);
+    expect(result.mode).toBe("narrative_only");
+  });
+
+  // ── Constants ────────────────────────────────────────────────────
+
+  it("exports COMPLETENESS_WARNING_THRESHOLD as 60", () => {
+    expect(COMPLETENESS_WARNING_THRESHOLD).toBe(60);
+  });
+
+  it("exports NARRATIVE_ONLY_THRESHOLD as 40", () => {
+    expect(NARRATIVE_ONLY_THRESHOLD).toBe(40);
   });
 
   // ── Helper functions ──────────────────────────────────────────────
 
   it("fullDataInput produces all-true flags with empty missingFields", () => {
     const input = fullDataInput();
+    expect(input.hasFixture).toBe(true);
     expect(input.hasLineup).toBe(true);
     expect(input.hasPlayerStats).toBe(true);
     expect(input.hasCardStats).toBe(true);
@@ -271,6 +435,7 @@ describe("computeDataCompleteness", () => {
 
   it("emptyDataInput produces all-false flags", () => {
     const input = emptyDataInput(["match.home"]);
+    expect(input.hasFixture).toBe(false);
     expect(input.hasLineup).toBe(false);
     expect(input.hasPlayerStats).toBe(false);
     expect(input.hasCardStats).toBe(false);
@@ -280,5 +445,27 @@ describe("computeDataCompleteness", () => {
     expect(input.hasInjuries).toBe(false);
     expect(input.hasXG).toBe(false);
     expect(input.missingFields).toEqual(["match.home"]);
+  });
+
+  // ── Fixture gate edge cases ──────────────────────────────────────
+
+  it("returns no_prediction even when other data is present but fixture is missing", () => {
+    const result = computeDataCompleteness(
+      withOverrides({
+        hasFixture: false,
+        hasLineup: true,
+        hasPlayerStats: true,
+      }),
+    );
+    expect(result.mode).toBe("no_prediction");
+    expect(result.score).toBe(0);
+    expect(result.allowedPredictionOutputs.noPrediction).toBe(true);
+  });
+
+  it("includes 'fixture' in missingFields when fixture is absent", () => {
+    const result = computeDataCompleteness(
+      withOverrides({ hasFixture: false }),
+    );
+    expect(result.missingFields).toContain("fixture");
   });
 });

@@ -16,6 +16,7 @@ export function PlayerCard({ player, compact = false }: PlayerCardProps) {
       <Link href={`/players/${player.id}`}>
         <motion.div
           whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           className="card-hover flex items-center gap-3"
         >
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-blue)]/20 text-sm font-bold text-[var(--accent-blue)]">
@@ -42,6 +43,7 @@ export function PlayerCard({ player, compact = false }: PlayerCardProps) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.98 }}
         className="card-hover space-y-3"
       >
         <div className="flex items-center justify-between">

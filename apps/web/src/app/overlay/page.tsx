@@ -79,9 +79,9 @@ export default function OverlayPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 p-4 md:p-6">
         {/* Previews */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="xl:col-span-8 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 16:9 Preview */}
             <OverlayPreview aspect="16:9" label="Broadcast Scene 16:9">
@@ -220,7 +220,7 @@ export default function OverlayPage() {
         </div>
 
         {/* Right: Config */}
-        <div className="lg:col-span-4 space-y-4">
+        <div className="xl:col-span-4 space-y-4">
           <div className="card space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Monitor className="h-4 w-4 text-[var(--accent-blue)]" />

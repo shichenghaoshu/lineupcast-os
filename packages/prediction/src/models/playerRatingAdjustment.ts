@@ -1,5 +1,14 @@
 import type { Confidence } from "./dixonColes.js";
 
+/** Flags indicating which data inputs were missing or defaulted. */
+export interface PlayerDataDegradationFlags {
+  missingFormRating: boolean;
+  missingInjuryStatus: boolean;
+  missingVenue: boolean;
+  missingOpponentStrength: boolean;
+  dataCompletenessScore?: number; // 0-100, from DataCompletenessScore integration
+}
+
 export interface PlayerRatingAdjustmentInput {
   playerId: string;
   playerName: string;
@@ -9,6 +18,8 @@ export interface PlayerRatingAdjustmentInput {
   injuryStatus?: "fit" | "doubtful" | "limited" | "out";
   isHome?: boolean;
   opponentStrength?: number;
+  /** Optional data completeness score (0-100) to limit output precision. */
+  dataCompletenessScore?: number;
 }
 
 export interface PlayerRatingAdjustment {
@@ -24,11 +35,14 @@ export interface PlayerRatingAdjustment {
     venueDelta: number;
     opponentDelta: number;
   };
+  degradationFlags: PlayerDataDegradationFlags;
 }
 
 export interface LineupRatingAdjustmentInput {
   teamId: string;
   players: PlayerRatingAdjustmentInput[];
+  /** Optional data completeness score (0-100) to limit output precision. */
+  dataCompletenessScore?: number;
 }
 
 export interface LineupRatingAdjustmentResult {
@@ -40,6 +54,7 @@ export interface LineupRatingAdjustmentResult {
     teamId: string;
     playersAdjusted: number;
     expectedMinutes: number;
+    dataCompletenessScore?: number;
   };
   confidence: Confidence;
   adjustedTeamRating: number;
@@ -62,8 +77,34 @@ function availabilityPenalty(status: PlayerRatingAdjustmentInput["injuryStatus"]
   return 0;
 }
 
+/**
+ * Round a number to the given decimal places, but reduce precision when
+ * dataCompletenessScore is below a threshold.
+ */
+function precisionRound(value: number, places: number, completenessScore?: number): number {
+  // Reduce precision when data is sparse: score < 60 → 0 decimal places, < 40 → integer
+  const effectivePlaces = completenessScore !== undefined
+    ? (completenessScore < 40 ? 0 : completenessScore < 60 ? Math.min(places, 1) : places)
+    : places;
+  const factor = 10 ** effectivePlaces;
+  return Math.round(value * factor) / factor;
+}
+
 export function adjustLineupRatings(input: LineupRatingAdjustmentInput): LineupRatingAdjustmentResult {
+  const completenessScore = input.dataCompletenessScore;
+
   const playerAdjustments = input.players.map((player) => {
+    const playerCompleteness = player.dataCompletenessScore ?? completenessScore;
+
+    // Track degradation flags per player
+    const degradationFlags: PlayerDataDegradationFlags = {
+      missingFormRating: player.recentFormRating === undefined,
+      missingInjuryStatus: player.injuryStatus === undefined,
+      missingVenue: player.isHome === undefined,
+      missingOpponentStrength: player.opponentStrength === undefined,
+      dataCompletenessScore: playerCompleteness,
+    };
+
     const minutesFactor = clamp(player.expectedMinutes, 0, 90) / 90;
     const formDelta = player.recentFormRating === undefined ? 0 : clamp((player.recentFormRating - player.baseRating) * 0.25, -5, 5);
     const availability = availabilityPenalty(player.injuryStatus);
@@ -77,8 +118,8 @@ export function adjustLineupRatings(input: LineupRatingAdjustmentInput): LineupR
       playerId: player.playerId,
       playerName: player.playerName,
       baseRating: player.baseRating,
-      adjustedRating: round(adjustedRating),
-      adjustment: round(adjustedRating - player.baseRating),
+      adjustedRating: precisionRound(adjustedRating, 2, playerCompleteness),
+      adjustment: precisionRound(adjustedRating - player.baseRating, 2, playerCompleteness),
       evidence: {
         minutesFactor: round(minutesFactor),
         formDelta: round(formDelta),
@@ -86,6 +127,7 @@ export function adjustLineupRatings(input: LineupRatingAdjustmentInput): LineupR
         venueDelta,
         opponentDelta: round(opponentDelta),
       },
+      degradationFlags,
     };
   });
 
@@ -95,7 +137,22 @@ export function adjustLineupRatings(input: LineupRatingAdjustmentInput): LineupR
     return sum + (adjustment?.adjustedRating ?? 0) * clamp(player.expectedMinutes, 0, 90);
   }, 0);
   const adjustedTeamRating = totalMinutes > 0 ? weightedRating / totalMinutes : 0;
-  const confidence: Confidence = input.players.length >= 10 && totalMinutes >= 850 ? "high" : input.players.length >= 7 ? "medium" : "low";
+
+  // Confidence degrades with low data completeness and missing player data
+  const playersWithForm = input.players.filter((p) => p.recentFormRating !== undefined).length;
+  const playersWithInjury = input.players.filter((p) => p.injuryStatus !== undefined).length;
+  const missingDataRatio = 1 - ((playersWithForm + playersWithInjury) / Math.max(1, input.players.length * 2));
+
+  let confidence: Confidence;
+  if (completenessScore !== undefined && completenessScore < 40) {
+    confidence = "low";
+  } else if (input.players.length >= 10 && totalMinutes >= 850 && missingDataRatio < 0.2) {
+    confidence = "high";
+  } else if (input.players.length >= 7 && missingDataRatio < 0.5) {
+    confidence = "medium";
+  } else {
+    confidence = "low";
+  }
 
   return {
     modelName: "lineup-rating-adjustment",
@@ -104,14 +161,15 @@ export function adjustLineupRatings(input: LineupRatingAdjustmentInput): LineupR
       "Decroos, T. et al. (2019) Actions Speak Louder than Goals: Valuing Player Actions in Soccer.",
       "Sumpter, D. (2016) Soccermatics: Mathematical Adventures in the Beautiful Game.",
     ],
-    explanation: "Lineup adjustment applies expected minutes, recent form, availability, venue, and opponent context to baseline player ratings.",
+    explanation: "Lineup adjustment applies expected minutes, recent form, availability, venue, and opponent context to baseline player ratings. Output precision is limited by data completeness.",
     evidence: {
       teamId: input.teamId,
       playersAdjusted: playerAdjustments.length,
       expectedMinutes: round(totalMinutes),
+      dataCompletenessScore: completenessScore,
     },
     confidence,
-    adjustedTeamRating: round(adjustedTeamRating),
+    adjustedTeamRating: precisionRound(adjustedTeamRating, 2, completenessScore),
     playerAdjustments,
   };
 }

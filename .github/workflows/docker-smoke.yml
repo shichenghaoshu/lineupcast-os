@@ -1,0 +1,203 @@
+name: Docker Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: lineupcast-api
+  CONTAINER_NAME: api-smoke-test
+  HOST_PORT: 8000
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f apps/api/Dockerfile \
+            -t ${{ env.IMAGE_NAME }}:smoke \
+            .
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name ${{ env.CONTAINER_NAME }} \
+            -p ${{ env.HOST_PORT }}:8000 \
+            -e LINEUPCAST_ENVIRONMENT=test \
+            -e LINEUPCAST_DEV_MODE=true \
+            ${{ env.IMAGE_NAME }}:smoke
+
+      - name: Wait for /healthz
+        run: |
+          echo "Waiting for container to be healthy..."
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          until [ $ATTEMPT -ge $MAX_ATTEMPTS ]; do
+            if curl -sf "http://localhost:${{ env.HOST_PORT }}/healthz" > /dev/null 2>&1; then
+              echo "Health check passed on attempt $((ATTEMPT + 1))"
+              break
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - waiting 1s..."
+            sleep 1
+          done
+
+          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+            echo "FAILED: Container did not become healthy within ${MAX_ATTEMPTS}s"
+            docker logs ${{ env.CONTAINER_NAME }}
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            exit 1
+          fi
+
+      - name: Verify /healthz response
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/healthz")
+          echo "Health response: $RESPONSE"
+
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          if [ "$STATUS" != "ok" ]; then
+            echo "FAILED: Expected status 'ok', got '$STATUS'"
+            exit 1
+          fi
+          echo "PASS: /healthz returns status=ok"
+
+      - name: Test /api/settings/providers
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/api/settings/providers")
+          echo "Settings response: $RESPONSE"
+
+          HAS_CONFIGS=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print('true' if 'configurations' in data and 'total' in data else 'false')
+          ")
+          if [ "$HAS_CONFIGS" != "true" ]; then
+            echo "FAILED: /api/settings/providers did not return expected structure"
+            exit 1
+          fi
+          echo "PASS: /api/settings/providers returns valid response"
+
+      - name: Test /api/matches/demo
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/api/matches/demo")
+          echo "Demo match response: $RESPONSE"
+
+          MATCH_ID=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print(data.get('matchId', ''))
+          ")
+          if [ -z "$MATCH_ID" ]; then
+            echo "FAILED: /api/matches/demo did not return a matchId"
+            exit 1
+          fi
+          echo "PASS: /api/matches/demo returns matchId=$MATCH_ID"
+
+      - name: Test /readyz
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/readyz")
+          echo "Readiness response: $RESPONSE"
+
+          STATUS=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print(data.get('status', ''))
+          ")
+          if [ "$STATUS" != "ready" ] && [ "$STATUS" != "degraded" ]; then
+            echo "FAILED: /readyz returned unexpected status '$STATUS'"
+            exit 1
+          fi
+
+          MODEL_AVAILABLE=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print('true' if data.get('model', {}).get('available') else 'false')
+          ")
+          if [ "$MODEL_AVAILABLE" != "true" ]; then
+            echo "FAILED: Model not marked as available in /readyz"
+            exit 1
+          fi
+          echo "PASS: /readyz returns status=$STATUS with model available"
+
+      - name: Test /api/matches (list endpoint)
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/api/matches")
+          echo "Matches list response: $RESPONSE"
+
+          COUNT=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print(len(data) if isinstance(data, list) else 0)
+          ")
+          if [ "$COUNT" -eq 0 ]; then
+            echo "FAILED: /api/matches returned empty list"
+            exit 1
+          fi
+          echo "PASS: /api/matches returns $COUNT matches"
+
+      - name: Test /api/providers
+        run: |
+          RESPONSE=$(curl -sf "http://localhost:${{ env.HOST_PORT }}/api/providers")
+          echo "Providers response: $RESPONSE"
+
+          HAS_PROVIDERS=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print('true' if isinstance(data, list) and len(data) > 0 else 'false')
+          ")
+          if [ "$HAS_PROVIDERS" != "true" ]; then
+            echo "FAILED: /api/providers returned no providers"
+            exit 1
+          fi
+          echo "PASS: /api/providers returns provider list"
+
+      - name: Test CORS headers
+        run: |
+          HEADERS=$(curl -sI -X OPTIONS \
+            -H "Origin: https://example.com" \
+            -H "Access-Control-Request-Method: GET" \
+            "http://localhost:${{ env.HOST_PORT }}/api/matches")
+
+          echo "CORS headers:"
+          echo "$HEADERS"
+
+          HAS_CORS=$(echo "$HEADERS" | grep -i "access-control-allow-origin" || true)
+          if [ -z "$HAS_CORS" ]; then
+            echo "WARNING: No CORS headers found (may be expected in test config)"
+          else
+            echo "PASS: CORS headers present"
+          fi
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          echo "=== Container Logs ==="
+          docker logs ${{ env.CONTAINER_NAME }} 2>&1 | tail -50
+          echo "=== Container Stats ==="
+          docker stats --no-stream ${{ env.CONTAINER_NAME }} || true
+
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker stop ${{ env.CONTAINER_NAME }} || true
+          docker rm ${{ env.CONTAINER_NAME }} || true
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "============================================"
+          echo "  Docker Smoke Test Summary"
+          echo "============================================"
+          echo "Image:    ${{ env.IMAGE_NAME }}:smoke"
+          echo "Port:     ${{ env.HOST_PORT }}"
+          echo "Status:   All endpoint checks completed"
+          echo "============================================"

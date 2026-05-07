@@ -400,3 +400,41 @@ class SnapshotListResponse(BaseModel):
 
     snapshots: list[MatchSnapshot]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# User management schemas
+# ---------------------------------------------------------------------------
+
+
+class UserOut(BaseModel):
+    """Public representation of a user."""
+
+    id: int
+    email: str
+    name: str
+    role: str
+    isActive: bool
+    invitedAt: datetime
+    lastLogin: datetime | None = None
+
+
+class UserListResponse(BaseModel):
+    """Wrapper returned by GET /api/users."""
+
+    users: list[UserOut]
+    total: int
+
+
+class UserInviteRequest(BaseModel):
+    """Request body for POST /api/users/invite."""
+
+    email: str = Field(..., min_length=3, max_length=256)
+    name: str = Field(..., min_length=1, max_length=128)
+    role: Literal["admin", "editor", "viewer"] = "viewer"
+
+
+class UserUpdateRoleRequest(BaseModel):
+    """Request body for PATCH /api/users/{id}/role."""
+
+    role: Literal["admin", "editor", "viewer"]

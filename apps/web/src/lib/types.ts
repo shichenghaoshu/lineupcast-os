@@ -98,3 +98,85 @@ export interface League {
   season: string;
   isActive: boolean;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Season stats types                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface SeasonOverview {
+  leagueId: string;
+  leagueName: string;
+  season: string;
+  totalMatches: number;
+  totalGoals: number;
+  avgGoalsPerMatch: number;
+  totalCleanSheets: number;
+  totalYellowCards: number;
+  totalRedCards: number;
+  totalPenalties: number;
+  homeWinPct: number;
+  drawPct: number;
+  awayWinPct: number;
+}
+
+export interface TopScorer {
+  rank: number;
+  playerId: string;
+  name: string;
+  team: string;
+  teamId: string;
+  goals: number;
+  assists: number;
+  matches: number;
+  minutesPlayed: number;
+  penaltyGoals: number;
+  goalsPer90: number;
+}
+
+export interface TopAssister {
+  rank: number;
+  playerId: string;
+  name: string;
+  team: string;
+  teamId: string;
+  assists: number;
+  keyPasses: number;
+  matches: number;
+  minutesPlayed: number;
+  assistsPer90: number;
+}
+
+export interface CleanSheetEntry {
+  rank: number;
+  playerId: string;
+  name: string;
+  team: string;
+  teamId: string;
+  cleanSheets: number;
+  goalsConceded: number;
+  matches: number;
+  concededPer90: number;
+  savePercentage: number;
+}
+
+export interface CardLeader {
+  rank: number;
+  playerId: string;
+  name: string;
+  team: string;
+  teamId: string;
+  yellowCards: number;
+  redCards: number;
+  totalCards: number;
+  foulsCommitted: number;
+  matches: number;
+  cardsPer90: number;
+}
+
+export interface SeasonStats {
+  overview: SeasonOverview;
+  topScorers: TopScorer[];
+  topAssists: TopAssister[];
+  cleanSheets: CleanSheetEntry[];
+  cardLeaders: CardLeader[];
+}

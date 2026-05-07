@@ -1,0 +1,211 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/lineupcast-api
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ── Gate: all CI checks must pass ───────────────────────────────────────
+  ci-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify CI passed
+        run: |
+          echo "CI gate: all required checks must pass before deploy."
+          echo "This job blocks deployment until CI completes successfully."
+
+  # ── Build and push Docker image ─────────────────────────────────────────
+  build-and-push:
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate build summary
+        run: |
+          echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── Deploy to production ────────────────────────────────────────────────
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || 'production' }}
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to production
+        id: deploy
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          IMAGE_DIGEST: ${{ needs.build-and-push.outputs.image-digest }}
+          DEPLOY_ENV: ${{ inputs.environment || 'production' }}
+        run: |
+          echo "============================================"
+          echo "  Deployment Placeholder"
+          echo "============================================"
+          echo ""
+          echo "Environment:  $DEPLOY_ENV"
+          echo "Image:        $IMAGE_TAG"
+          echo "Digest:       $IMAGE_DIGEST"
+          echo ""
+          echo "TODO: Replace this step with actual deployment commands."
+          echo ""
+          echo "Examples:"
+          echo "  - kubectl apply -f k8s/"
+          echo "  - docker compose -f docker-compose.prod.yml up -d"
+          echo "  - fly deploy"
+          echo "  - railway up"
+          echo ""
+          echo "============================================"
+
+          # Placeholder: set deployment URL
+          echo "url=https://api.lineupcast.example.com" >> $GITHUB_OUTPUT
+
+  # ── Health check after deploy ───────────────────────────────────────────
+  post-deploy-health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always() && needs.deploy.result == 'success'
+
+    steps:
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Health check - /healthz
+        env:
+          API_URL: ${{ needs.deploy.outputs.url || 'https://api.lineupcast.example.com' }}
+        run: |
+          echo "Checking health at: $API_URL/healthz"
+
+          MAX_ATTEMPTS=10
+          ATTEMPT=0
+          until [ $ATTEMPT -ge $MAX_ATTEMPTS ]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz" || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "PASS: /healthz returned 200 on attempt $((ATTEMPT + 1))"
+              break
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - got HTTP $HTTP_CODE, retrying..."
+            sleep 10
+          done
+
+          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+            echo "FAILED: Health check did not pass within ${MAX_ATTEMPTS} attempts"
+            exit 1
+          fi
+
+      - name: Verify /readyz after deploy
+        env:
+          API_URL: ${{ needs.deploy.outputs.url || 'https://api.lineupcast.example.com' }}
+        run: |
+          RESPONSE=$(curl -sf "$API_URL/readyz")
+          echo "Readiness response: $RESPONSE"
+
+          STATUS=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print(data.get('status', 'unknown'))
+          ")
+
+          if [ "$STATUS" = "ready" ] || [ "$STATUS" = "degraded" ]; then
+            echo "PASS: /readyz returns status=$STATUS"
+          else
+            echo "FAILED: /readyz returned unexpected status '$STATUS'"
+            exit 1
+          fi
+
+      - name: Generate deploy summary
+        if: always()
+        run: |
+          echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** \`${{ inputs.environment || 'production' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Check:** ${{ steps.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  # ── Rollback on failure ─────────────────────────────────────────────────
+  rollback:
+    needs: [deploy, post-deploy-health-check]
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy.result == 'success'
+
+    steps:
+      - name: Rollback notification
+        env:
+          DEPLOY_ENV: ${{ inputs.environment || 'production' }}
+        run: |
+          echo "============================================"
+          echo "  ROLLBACK TRIGGERED"
+          echo "============================================"
+          echo ""
+          echo "Environment: $DEPLOY_ENV"
+          echo "Reason: Post-deploy health check failed"
+          echo ""
+          echo "TODO: Implement rollback strategy:"
+          echo "  - kubectl rollout undo deployment/lineupcast-api"
+          echo "  - docker compose -f docker-compose.prod.yml up -d <previous-tag>"
+          echo ""
+          echo "============================================"

@@ -1,4 +1,4 @@
-import type { Player, Match, Prediction, DataProvider, H2HRecord, FormEntry, League } from "./types";
+import type { Player, Match, Prediction, DataProvider, H2HRecord, FormEntry, League, SeasonStats } from "./types";
 
 export const manchesterRedXI: Player[] = [
   {
@@ -388,3 +388,65 @@ export const leagues: League[] = [
   { id: "chinese-super-league", name: "Chinese Super League", shortName: "CSL", country: "China", countryFlag: "🇨🇳", season: "2025", isActive: true },
   { id: "champions-league", name: "UEFA Champions League", shortName: "UCL", country: "Europe", countryFlag: "🇪🇺", season: "2025-26", isActive: true },
 ];
+
+export const seasonStats: SeasonStats = {
+  overview: {
+    leagueId: "premier-league",
+    leagueName: "Premier League",
+    season: "2025-26",
+    totalMatches: 260,
+    totalGoals: 689,
+    avgGoalsPerMatch: 2.65,
+    totalCleanSheets: 98,
+    totalYellowCards: 1042,
+    totalRedCards: 38,
+    totalPenalties: 52,
+    homeWinPct: 44.2,
+    drawPct: 25.8,
+    awayWinPct: 30.0,
+  },
+  topScorers: [
+    { rank: 1, playerId: "scorer-1", name: "V. Finish", team: "Manchester Red", teamId: "manchester-red", goals: 24, assists: 7, matches: 32, minutesPlayed: 2780, penaltyGoals: 4, goalsPer90: 0.78 },
+    { rank: 2, playerId: "scorer-2", name: "H. Counter", team: "Shanghai Harbor", teamId: "shanghai-harbor", goals: 21, assists: 5, matches: 31, minutesPlayed: 2650, penaltyGoals: 2, goalsPer90: 0.71 },
+    { rank: 3, playerId: "scorer-3", name: "R. Santos", team: "London Blues", teamId: "london-blues", goals: 19, assists: 11, matches: 33, minutesPlayed: 2900, penaltyGoals: 6, goalsPer90: 0.59 },
+    { rank: 4, playerId: "scorer-4", name: "M. Dubois", team: "Paris Stars", teamId: "paris-stars", goals: 18, assists: 3, matches: 30, minutesPlayed: 2520, penaltyGoals: 0, goalsPer90: 0.64 },
+    { rank: 5, playerId: "scorer-5", name: "K. Burst", team: "Manchester Red", teamId: "manchester-red", goals: 16, assists: 9, matches: 32, minutesPlayed: 2680, penaltyGoals: 0, goalsPer90: 0.54 },
+    { rank: 6, playerId: "scorer-6", name: "L. Martinez", team: "Madrid Lions", teamId: "madrid-lions", goals: 15, assists: 6, matches: 31, minutesPlayed: 2400, penaltyGoals: 3, goalsPer90: 0.56 },
+    { rank: 7, playerId: "scorer-7", name: "J. Spark", team: "Manchester Red", teamId: "manchester-red", goals: 14, assists: 12, matches: 33, minutesPlayed: 2850, penaltyGoals: 0, goalsPer90: 0.44 },
+    { rank: 8, playerId: "scorer-8", name: "T. Müller", team: "Berlin Eagles", teamId: "berlin-eagles", goals: 13, assists: 8, matches: 30, minutesPlayed: 2380, penaltyGoals: 1, goalsPer90: 0.49 },
+    { rank: 9, playerId: "scorer-9", name: "A. Silva", team: "Lisbon Waves", teamId: "lisbon-waves", goals: 12, assists: 4, matches: 29, minutesPlayed: 2200, penaltyGoals: 2, goalsPer90: 0.49 },
+    { rank: 10, playerId: "scorer-10", name: "D. Costa", team: "Rome Wolves", teamId: "rome-wolves", goals: 12, assists: 3, matches: 32, minutesPlayed: 2700, penaltyGoals: 0, goalsPer90: 0.40 },
+  ],
+  topAssists: [
+    { rank: 1, playerId: "assist-1", name: "B. Vision", team: "Manchester Red", teamId: "manchester-red", assists: 14, keyPasses: 78, matches: 32, minutesPlayed: 2820, assistsPer90: 0.45 },
+    { rank: 2, playerId: "assist-2", name: "J. Spark", team: "Manchester Red", teamId: "manchester-red", assists: 12, keyPasses: 65, matches: 33, minutesPlayed: 2850, assistsPer90: 0.38 },
+    { rank: 3, playerId: "assist-3", name: "R. Santos", team: "London Blues", teamId: "london-blues", assists: 11, keyPasses: 72, matches: 33, minutesPlayed: 2900, assistsPer90: 0.34 },
+    { rank: 4, playerId: "assist-4", name: "N. Cross", team: "Manchester Red", teamId: "manchester-red", assists: 10, keyPasses: 56, matches: 30, minutesPlayed: 2500, assistsPer90: 0.36 },
+    { rank: 5, playerId: "assist-5", name: "K. Burst", team: "Manchester Red", teamId: "manchester-red", assists: 9, keyPasses: 48, matches: 32, minutesPlayed: 2680, assistsPer90: 0.30 },
+    { rank: 6, playerId: "assist-6", name: "T. Müller", team: "Berlin Eagles", teamId: "berlin-eagles", assists: 8, keyPasses: 52, matches: 30, minutesPlayed: 2380, assistsPer90: 0.30 },
+    { rank: 7, playerId: "assist-7", name: "L. Wing", team: "Manchester Red", teamId: "manchester-red", assists: 7, keyPasses: 42, matches: 31, minutesPlayed: 2600, assistsPer90: 0.24 },
+    { rank: 8, playerId: "assist-8", name: "V. Finish", team: "Manchester Red", teamId: "manchester-red", assists: 7, keyPasses: 35, matches: 32, minutesPlayed: 2780, assistsPer90: 0.23 },
+    { rank: 9, playerId: "assist-9", name: "P. Herrera", team: "Madrid Lions", teamId: "madrid-lions", assists: 7, keyPasses: 58, matches: 29, minutesPlayed: 2300, assistsPer90: 0.27 },
+    { rank: 10, playerId: "assist-10", name: "F. Bianchi", team: "Milan Knights", teamId: "milan-knights", assists: 6, keyPasses: 45, matches: 31, minutesPlayed: 2450, assistsPer90: 0.22 },
+  ],
+  cleanSheets: [
+    { rank: 1, playerId: "cs-1", name: "A. Keeper", team: "Manchester Red", teamId: "manchester-red", cleanSheets: 16, goalsConceded: 22, matches: 32, concededPer90: 0.62, savePercentage: 78.5 },
+    { rank: 2, playerId: "cs-2", name: "G. Neuer II", team: "Berlin Eagles", teamId: "berlin-eagles", cleanSheets: 14, goalsConceded: 28, matches: 30, concededPer90: 0.84, savePercentage: 75.2 },
+    { rank: 3, playerId: "cs-3", name: "C. Bravo Jr", team: "London Blues", teamId: "london-blues", cleanSheets: 13, goalsConceded: 30, matches: 33, concededPer90: 0.82, savePercentage: 74.1 },
+    { rank: 4, playerId: "cs-4", name: "M. Donnarumma", team: "Milan Knights", teamId: "milan-knights", cleanSheets: 12, goalsConceded: 32, matches: 31, concededPer90: 0.93, savePercentage: 72.8 },
+    { rank: 5, playerId: "cs-5", name: "J. Oblak Jr", team: "Madrid Lions", teamId: "madrid-lions", cleanSheets: 11, goalsConceded: 29, matches: 30, concededPer90: 0.87, savePercentage: 76.3 },
+    { rank: 6, playerId: "cs-6", name: "K. Navas II", team: "Paris Stars", teamId: "paris-stars", cleanSheets: 10, goalsConceded: 35, matches: 31, concededPer90: 1.02, savePercentage: 71.5 },
+    { rank: 7, playerId: "cs-7", name: "S. Patricio", team: "Rome Wolves", teamId: "rome-wolves", cleanSheets: 9, goalsConceded: 34, matches: 30, concededPer90: 1.02, savePercentage: 70.8 },
+    { rank: 8, playerId: "cs-8", name: "R. Zieler", team: "Shanghai Harbor", teamId: "shanghai-harbor", cleanSheets: 9, goalsConceded: 38, matches: 32, concededPer90: 1.07, savePercentage: 69.4 },
+  ],
+  cardLeaders: [
+    { rank: 1, playerId: "card-1", name: "R. Block", team: "Manchester Red", teamId: "manchester-red", yellowCards: 11, redCards: 1, totalCards: 12, foulsCommitted: 58, matches: 30, cardsPer90: 0.36 },
+    { rank: 2, playerId: "card-2", name: "D. Anchor", team: "Manchester Red", teamId: "manchester-red", yellowCards: 10, redCards: 0, totalCards: 10, foulsCommitted: 52, matches: 28, cardsPer90: 0.32 },
+    { rank: 3, playerId: "card-3", name: "C. Press", team: "Manchester Red", teamId: "manchester-red", yellowCards: 9, redCards: 1, totalCards: 10, foulsCommitted: 65, matches: 31, cardsPer90: 0.29 },
+    { rank: 4, playerId: "card-4", name: "S. Ramos Jr", team: "Madrid Lions", teamId: "madrid-lions", yellowCards: 9, redCards: 2, totalCards: 11, foulsCommitted: 48, matches: 29, cardsPer90: 0.34 },
+    { rank: 5, playerId: "card-5", name: "G. Pepe II", team: "Lisbon Waves", teamId: "lisbon-waves", yellowCards: 8, redCards: 1, totalCards: 9, foulsCommitted: 45, matches: 27, cardsPer90: 0.30 },
+    { rank: 6, playerId: "card-6", name: "V. Kompany Jr", team: "London Blues", teamId: "london-blues", yellowCards: 8, redCards: 0, totalCards: 8, foulsCommitted: 42, matches: 32, cardsPer90: 0.23 },
+    { rank: 7, playerId: "card-7", name: "N. Kante II", team: "Paris Stars", teamId: "paris-stars", yellowCards: 7, redCards: 0, totalCards: 7, foulsCommitted: 38, matches: 30, cardsPer90: 0.21 },
+    { rank: 8, playerId: "card-8", name: "M. Verratti Jr", team: "Rome Wolves", teamId: "rome-wolves", yellowCards: 7, redCards: 1, totalCards: 8, foulsCommitted: 50, matches: 28, cardsPer90: 0.26 },
+  ],
+};

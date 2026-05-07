@@ -6,7 +6,11 @@ export type {
   ShortVideoInput,
   LowerThirdInput,
   PredictionStripInput,
+  DisciplineRiskPlayer,
+  DisciplineRiskAlertInput,
   OverlayExportPayload,
+  OverlayExportHistoryEntry,
+  OverlayExportHistory,
 } from "./types.js";
 
 export {
@@ -14,6 +18,7 @@ export {
   renderShortVideo9x16,
   renderLowerThird,
   renderPredictionStrip,
+  renderDisciplineRiskAlert,
 } from "./scenes.js";
 
 export {
@@ -21,7 +26,10 @@ export {
   exportOverlaySvg,
   exportOverlayPng,
   createBrowserSourceUrl,
+  exportOverlayHtml,
 } from "./export.js";
+
+export type { OverlayHtmlExportOptions } from "./export.js";
 
 // ─── Legacy HTML renderer (preserved for backwards compat) ─────────
 

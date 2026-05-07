@@ -204,6 +204,8 @@ describe("exportOverlayJson", () => {
     const payload = {
       version: "1.0.0",
       generatedAt: "2026-05-06T00:00:00Z",
+      dataSource: "test-data",
+      disclaimer: "For commentary assistance only, not betting advice.",
       scenes: [
         { id: "s1", type: "lineup", svg: "<svg></svg>", width: 1920, height: 1080 },
       ],

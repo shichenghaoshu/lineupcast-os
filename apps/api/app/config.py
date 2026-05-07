@@ -25,6 +25,12 @@ class Settings:
     script_model_name: str = field(default_factory=lambda: os.getenv("LINEUPCAST_SCRIPT_MODEL_NAME", "LineupCast Scriptwriter"))
     script_model_version: str = field(default_factory=lambda: os.getenv("LINEUPCAST_SCRIPT_MODEL_VERSION", "1.1.0"))
     admin_token: str | None = field(default_factory=lambda: os.getenv("LINEUPCAST_ADMIN_TOKEN"))
+    dev_mode: bool = field(
+        default_factory=lambda: os.getenv("LINEUPCAST_DEV_MODE", "true").lower() in ("true", "1", "yes"),
+    )
+    workspace_required: bool = field(
+        default_factory=lambda: os.getenv("LINEUPCAST_WORKSPACE_REQUIRED", "false").lower() in ("true", "1", "yes"),
+    )
     database_url: str = field(
         default_factory=lambda: os.getenv(
             "LINEUPCAST_DATABASE_URL",

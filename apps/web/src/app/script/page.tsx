@@ -134,10 +134,27 @@ export default function ScriptPage() {
             />
           </div>
 
-          <ScriptTeleprompter
-            title={`${durations.find((item) => item.key === duration)?.label ?? duration} · ${styles.find((item) => item.key === style)?.label ?? style}`}
-            text={result?.script ?? ""}
-          />
+          {loading ? (
+            <div className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="h-5 w-32 rounded bg-[var(--bg-primary)] animate-pulse" />
+              </div>
+              <div className="space-y-2 rounded bg-[var(--bg-primary)] p-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-4 rounded bg-[var(--bg-card)] animate-pulse"
+                    style={{ width: `${70 + Math.random() * 30}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <ScriptTeleprompter
+              title={`${durations.find((item) => item.key === duration)?.label ?? duration} · ${styles.find((item) => item.key === style)?.label ?? style}`}
+              text={result?.script ?? ""}
+            />
+          )}
 
           {result?.disclaimer && (
             <div className="card text-xs leading-relaxed text-[var(--text-muted)]">

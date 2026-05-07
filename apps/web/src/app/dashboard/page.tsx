@@ -69,11 +69,60 @@ export default function DashboardPage() {
 
   if (loading || !match || !prediction) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent-blue)]" />
-        <span className="ml-2 text-sm text-[var(--text-muted)]">
-          Loading dashboard...
-        </span>
+      <div className="min-h-screen">
+        {/* TopBar skeleton */}
+        <div className="flex h-14 items-center border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 md:px-6">
+          <div className="pl-12 md:pl-0 space-y-1">
+            <div className="h-4 w-32 rounded bg-[var(--bg-card)] animate-pulse" />
+            <div className="h-3 w-48 rounded bg-[var(--bg-card)] animate-pulse" />
+          </div>
+        </div>
+
+        <div className="space-y-4 p-4 md:p-6">
+          {/* Match header skeleton */}
+          <div className="card flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="text-center space-y-1">
+                <div className="h-6 w-32 rounded bg-[var(--bg-primary)] animate-pulse" />
+                <div className="h-3 w-10 rounded bg-[var(--bg-primary)] animate-pulse mx-auto" />
+              </div>
+              <div className="h-4 w-8 rounded bg-[var(--bg-primary)] animate-pulse" />
+              <div className="text-center space-y-1">
+                <div className="h-6 w-32 rounded bg-[var(--bg-primary)] animate-pulse" />
+                <div className="h-3 w-10 rounded bg-[var(--bg-primary)] animate-pulse mx-auto" />
+              </div>
+            </div>
+          </div>
+
+          {/* KPI cards skeleton */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="card flex items-center gap-3">
+                <div className="h-8 w-8 rounded-md bg-[var(--bg-primary)] animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="h-3 w-20 rounded bg-[var(--bg-primary)] animate-pulse" />
+                  <div className="h-6 w-12 rounded bg-[var(--bg-primary)] animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Main grid skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-4 space-y-4">
+              <div className="card h-64 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+              <div className="card h-24 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+            </div>
+            <div className="lg:col-span-5 space-y-4">
+              <div className="card h-32 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+              <div className="card h-48 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+            </div>
+            <div className="lg:col-span-3 space-y-4">
+              <div className="card h-48 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+              <div className="card h-32 rounded-lg bg-[var(--bg-card)] animate-pulse" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -247,24 +296,23 @@ export default function DashboardPage() {
 
           {/* Right: Key Players */}
           <div className="lg:col-span-3 space-y-4">
-            <div className="card">
-              <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                关键球员
-              </div>
-              <div className="space-y-2">
-                {players
-                  .sort((a, b) => b.recentRating - a.recentRating)
-                  .slice(0, 5)
-                  .map((player) => (
-                    <PlayerCard key={player.id} player={player} compact />
-                  ))}
-              </div>
-            </div>
+            <Card hoverShadow="amber">
+              <Card.Header>关键球员</Card.Header>
+              <Card.Body>
+                <div className="space-y-2">
+                  {players
+                    .sort((a, b) => b.recentRating - a.recentRating)
+                    .slice(0, 5)
+                    .map((player) => (
+                      <PlayerCard key={player.id} player={player} compact />
+                    ))}
+                </div>
+              </Card.Body>
+            </Card>
 
-            <div className="card space-y-2">
-              <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                可能进球人
-              </div>
+            <Card hoverShadow="green" className="space-y-2">
+              <Card.Header>可能进球人</Card.Header>
+              <Card.Body>
               {prediction.possibleScorers.map((scorer) => (
                 <div
                   key={scorer.name}
@@ -276,12 +324,12 @@ export default function DashboardPage() {
                   </span>
                 </div>
               ))}
-            </div>
+              </Card.Body>
+            </Card>
 
-            <div className="card space-y-2">
-              <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                黄牌风险
-              </div>
+            <Card hoverShadow="amber" className="space-y-2">
+              <Card.Header>黄牌风险</Card.Header>
+              <Card.Body>
               {prediction.yellowCardRisks.map((risk) => (
                 <div
                   key={risk.name}

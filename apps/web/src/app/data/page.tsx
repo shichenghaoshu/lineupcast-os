@@ -11,6 +11,7 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
+import { Alert } from "@/components/Alert";
 import { TopBar } from "@/components/TopBar";
 import { ProviderStatusCard } from "@/components/ProviderStatusCard";
 import {
@@ -189,9 +190,28 @@ export default function DataPage() {
 
           <div className="space-y-2">
             {loading && (
-              <div className="card text-sm text-[var(--text-muted)]">
-                正在加载数据源...
-              </div>
+              <>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="card space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 rounded bg-[var(--bg-primary)] animate-pulse" />
+                        <div className="h-4 w-28 rounded bg-[var(--bg-primary)] animate-pulse" />
+                      </div>
+                      <div className="h-5 w-16 rounded-full bg-[var(--bg-primary)] animate-pulse" />
+                    </div>
+                    <div className="flex gap-1">
+                      {Array.from({ length: 3 }).map((_, j) => (
+                        <div key={j} className="h-5 w-14 rounded-full bg-[var(--bg-primary)] animate-pulse" />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 w-20 rounded bg-[var(--bg-primary)] animate-pulse" />
+                      <div className="h-5 w-16 rounded bg-[var(--bg-primary)] animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
             {dashboard?.providers.map((provider) => {
               // Enrich provider with readiness error data
@@ -361,18 +381,13 @@ export default function DataPage() {
 
           {/* Error Log section */}
           {errorLogs.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="card space-y-3 border-[var(--accent-red)]"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <AlertTriangle className="h-4 w-4 text-[var(--accent-red)]" />
-                错误日志
-                <span className="badge-red text-[10px]">
-                  {errorLogs.length}
-                </span>
-              </div>
+            <div className="space-y-3">
+              <Alert
+                variant="error"
+                title={`错误日志 (${errorLogs.length})`}
+                message={`检测到 ${errorLogs.length} 条错误日志，请检查数据源配置。`}
+              />
+              <div className="card space-y-3 border-[var(--accent-red)]">
               <div className="max-h-48 space-y-1.5 overflow-y-auto font-mono text-[10px]">
                 {errorLogs.map((log, i) => (
                   <div

@@ -3,8 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Database, Info, Languages, ShieldAlert, Target } from "lucide-react";
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+} from "recharts";
+import { manchesterRedXI } from "@/lib/mock-data";
 import { ModelBadge } from "@/components/ModelBadge";
 import { TopBar } from "@/components/TopBar";
+import { ExportButton } from "@/components/ExportButton";
 import {
   getMatchBundle,
   getDataCompleteness,
@@ -134,6 +144,10 @@ export default function PredictionPage() {
             {language === "bilingual" ? "中文 / English" : language.toUpperCase()}
           </div>
           <div className="flex items-center gap-2">
+            <ExportButton
+              allowedFormats={["predictions-csv", "full-zip"]}
+              matchId={match?.matchId}
+            />
             {completeness && (
               <span
                 className={`badge text-[10px] ${
@@ -174,33 +188,45 @@ export default function PredictionPage() {
 
         {prediction && match && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: text.homeWin, value: `${prediction.homeWin}%`, color: "var(--accent-green)" },
-                { label: text.draw, value: `${prediction.draw}%`, color: "var(--accent-amber)" },
-                { label: text.awayWin, value: `${prediction.awayWin}%`, color: "var(--accent-blue)" },
-                { label: text.confidence, value: `${prediction.confidence}%`, color: "var(--accent-purple)" },
-              ].map((card) => (
-                <motion.div
-                  key={card.label}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="card text-center"
-                >
-                  <div className="text-xs text-[var(--text-muted)]">{card.label}</div>
-                  <div className="text-3xl font-bold tabular-nums" style={{ color: card.color }}>
-                    {card.value}
-                  </div>
-                </motion.div>
-              ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Animated Probability Bars */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className="card space-y-4"
+              >
+                <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  {language === "en" ? "Win Probabilities" : language === "bilingual" ? "胜率概率 / Win Probabilities" : "胜率概率"}
+                </div>
+                <AnimatedProbBar label={text.homeWin} value={prediction.homeWin} color="var(--accent-green)" delay={0.1} />
+                <AnimatedProbBar label={text.draw} value={prediction.draw} color="var(--accent-amber)" delay={0.25} />
+                <AnimatedProbBar label={text.awayWin} value={prediction.awayWin} color="var(--accent-blue)" delay={0.4} />
+              </motion.div>
+              {/* Confidence Gauge Ring */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className="card flex items-center justify-center py-6"
+              >
+                <ConfidenceGaugeRing confidence={prediction.confidence} label={text.confidence} language={language} />
+              </motion.div>
             </div>
 
-            <div className="card flex flex-wrap items-center justify-center gap-6">
-              <ScoreBlock team={match.homeTeam.name} value={prediction.expectedHomeGoals} color="var(--accent-green)" />
-              <div className="text-2xl text-[var(--text-muted)]">-</div>
-              <ScoreBlock team={match.awayTeam.name} value={prediction.expectedAwayGoals} color="var(--accent-blue)" />
-              <span className="w-full text-center text-xs text-[var(--text-muted)]">{text.expected}</span>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <XGComparisonInline
+                homeTeam={match.homeTeam.name}
+                awayTeam={match.awayTeam.name}
+                homeXG={prediction.expectedHomeGoals}
+                awayXG={prediction.expectedAwayGoals}
+                language={language}
+              />
+            </motion.div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
               <div className="card space-y-3 xl:col-span-5">

@@ -11,8 +11,13 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Key,
+  Gauge,
+  Layers,
+  TrendingUp,
+  Info,
 } from "lucide-react";
-import type { DataProvider } from "@/lib/types";
+import type { DataProvider, SyncOutcome } from "@/lib/types";
 
 interface ProviderStatusCardProps {
   provider: DataProvider;
@@ -59,6 +64,13 @@ const healthConfig = {
   },
 };
 
+const trendConfig: Record<SyncOutcome, { color: string; label: string }> = {
+  success: { color: "bg-[var(--accent-green)]", label: "成功" },
+  error: { color: "bg-[var(--accent-red)]", label: "失败" },
+  timeout: { color: "bg-[var(--accent-amber)]", label: "超时" },
+  skipped: { color: "bg-[var(--bg-primary)]", label: "跳过" },
+};
+
 export function ProviderStatusCard({
   provider,
   onTest,
@@ -70,6 +82,19 @@ export function ProviderStatusCard({
   const healthCfg = healthConfig[health];
   const errorCount = provider.errorCount ?? 0;
   const [errorExpanded, setErrorExpanded] = useState(false);
+  const [showDegradedTooltip, setShowDegradedTooltip] = useState(false);
+
+  const rateLimitRemaining = provider.rateLimitRemaining;
+  const rateLimitTotal = provider.rateLimitTotal;
+  const rateLimitLow =
+    rateLimitRemaining !== null &&
+    rateLimitRemaining !== undefined &&
+    rateLimitTotal !== null &&
+    rateLimitTotal !== undefined &&
+    rateLimitTotal > 0 &&
+    rateLimitRemaining / rateLimitTotal < 0.2;
+
+  const degradedReasons = provider.degradedReasons ?? [];
 
   return (
     <motion.div
@@ -87,6 +112,53 @@ export function ProviderStatusCard({
             className={`inline-block h-2 w-2 rounded-full ${healthCfg.dot}`}
             title={healthCfg.label}
           />
+          {/* Token missing indicator */}
+          {provider.tokenMissing && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-[var(--accent-amber)]"
+              title={provider.tokenEnvKey ? `需要配置 ${provider.tokenEnvKey}` : "缺少 API Token"}
+            >
+              <Key className="h-2.5 w-2.5" />
+              Token 缺失
+            </span>
+          )}
+          {/* Degraded reason indicator */}
+          {degradedReasons.length > 0 && (
+            <span className="relative">
+              <button
+                className="inline-flex items-center gap-0.5 text-[var(--accent-amber)]"
+                onMouseEnter={() => setShowDegradedTooltip(true)}
+                onMouseLeave={() => setShowDegradedTooltip(false)}
+                onClick={() => setShowDegradedTooltip((v) => !v)}
+              >
+                <Info className="h-3 w-3" />
+              </button>
+              <AnimatePresence>
+                {showDegradedTooltip && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute left-0 top-6 z-50 w-56 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 text-[10px] shadow-lg"
+                  >
+                    <div className="mb-1 font-medium text-[var(--accent-amber)]">
+                      降级原因
+                    </div>
+                    <ul className="space-y-0.5 text-[var(--text-muted)]">
+                      {degradedReasons.map((reason, i) => (
+                        <li key={i} className="flex items-start gap-1">
+                          <span className="mt-0.5 text-[var(--accent-amber)]">
+                            -
+                          </span>
+                          {reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Freshness badge */}
@@ -125,6 +197,23 @@ export function ProviderStatusCard({
         </div>
       </div>
 
+      {/* Capabilities list */}
+      {provider.capabilities && provider.capabilities.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+            <Layers className="h-3 w-3" />
+            <span>能力</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {provider.capabilities.map((cap) => (
+              <span key={cap} className="rounded bg-[var(--accent-purple)]/10 px-1.5 py-0.5 text-[9px] text-[var(--accent-purple)]">
+                {cap}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Fields */}
       <div className="flex flex-wrap gap-1">
         {provider.fields.map((field) => (
@@ -134,12 +223,55 @@ export function ProviderStatusCard({
         ))}
       </div>
 
+      {/* Rate limit indicator */}
+      {rateLimitRemaining !== null && rateLimitRemaining !== undefined && (
+        <div className="flex items-center gap-2 text-[10px]">
+          <Gauge className={`h-3 w-3 ${rateLimitLow ? "text-[var(--accent-amber)]" : "text-[var(--text-muted)]"}`} />
+          <span className={rateLimitLow ? "text-[var(--accent-amber)]" : "text-[var(--text-muted)]"}>
+            额度: {rateLimitRemaining}/{rateLimitTotal}
+          </span>
+          {rateLimitTotal && rateLimitTotal > 0 && (
+            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[var(--bg-primary)]">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  rateLimitLow ? "bg-[var(--accent-amber)]" : "bg-[var(--accent-green)]"
+                }`}
+                style={{ width: `${Math.round((rateLimitRemaining / rateLimitTotal) * 100)}%` }}
+              />
+            </div>
+          )}
+          {rateLimitLow && (
+            <span className="text-[var(--accent-amber)]">额度不足</span>
+          )}
+        </div>
+      )}
+
       {/* Last successful sync */}
       {provider.lastSuccessfulSync && (
         <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
           <Clock className="h-3 w-3" />
           上次成功同步:{" "}
           {new Date(provider.lastSuccessfulSync).toLocaleString("zh-CN")}
+        </div>
+      )}
+
+      {/* Health trend (last 5 syncs) */}
+      {provider.healthTrend && provider.healthTrend.length > 0 && (
+        <div className="flex items-center gap-1.5 text-[10px]">
+          <TrendingUp className="h-3 w-3 text-[var(--text-muted)]" />
+          <span className="text-[var(--text-muted)]">趋势:</span>
+          <div className="flex items-center gap-0.5">
+            {provider.healthTrend.map((outcome, i) => {
+              const tc = trendConfig[outcome];
+              return (
+                <span
+                  key={i}
+                  className={`inline-block h-2.5 w-2.5 rounded-sm ${tc.color}`}
+                  title={tc.label}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 

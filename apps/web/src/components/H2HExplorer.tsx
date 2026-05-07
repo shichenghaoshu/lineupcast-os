@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { memo, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { Card } from "@/components/Card";
 import type { H2HRecord } from "@/lib/types";
 
 interface H2HExplorerProps {
@@ -19,27 +20,25 @@ interface H2HExplorerProps {
   awayTeam: string;
 }
 
-export function H2HExplorer({ record, homeTeam, awayTeam }: H2HExplorerProps) {
-  const total = record.homeWins + record.draws + record.awayWins;
-  const chartData = record.matches
-    .slice()
-    .reverse()
-    .map((m) => ({
-      match: new Date(m.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }),
-      [homeTeam]: m.homeScore,
-      [awayTeam]: m.awayScore,
-    }));
+export const H2HExplorer = memo(function H2HExplorer({ record, homeTeam, awayTeam }: H2HExplorerProps) {
+  const total = useMemo(() => record.homeWins + record.draws + record.awayWins, [record]);
+  const chartData = useMemo(
+    () =>
+      record.matches
+        .slice()
+        .reverse()
+        .map((m) => ({
+          match: new Date(m.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }),
+          [homeTeam]: m.homeScore,
+          [awayTeam]: m.awayScore,
+        })),
+    [record.matches, homeTeam, awayTeam],
+  );
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="card"
-    >
-      <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-        H2H · 历史交锋
-      </div>
+    <Card>
+      <Card.Header>H2H · 历史交锋</Card.Header>
+      <Card.Body>
 
       {/* Summary Bar */}
       <div className="mb-4 flex items-center gap-2 text-xs">
@@ -103,6 +102,7 @@ export function H2HExplorer({ record, homeTeam, awayTeam }: H2HExplorerProps) {
           </div>
         ))}
       </div>
-    </motion.div>
+    </Card.Body>
+    </Card>
   );
-}
+});

@@ -74,10 +74,14 @@ export function FormationPitch({ players, formation = "4-2-3-1" }: FormationPitc
           >
             <Link href={`/players/${player.id}`}>
               <div className="group flex flex-col items-center gap-0.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-blue)] text-xs font-bold text-white shadow-lg ring-2 ring-[var(--accent-blue)]/30 transition-transform group-hover:scale-110">
+                <div className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[var(--accent-blue)] text-xs font-bold text-white shadow-lg ring-2 ring-[var(--accent-blue)]/30 transition-transform group-hover:scale-110 group-active:scale-95">
                   {player.number}
                 </div>
-                <span className="whitespace-nowrap rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="whitespace-nowrap rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 sm:group-hover:opacity-100 hidden sm:block">
+                  {player.name}
+                </span>
+                {/* Always show name on mobile since no hover */}
+                <span className="whitespace-nowrap rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white sm:hidden">
                   {player.name}
                 </span>
               </div>

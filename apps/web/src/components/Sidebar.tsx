@@ -15,6 +15,8 @@ import {
   LogIn,
   Menu,
   X,
+  UserCog,
+  History,
 } from "lucide-react";
 import { LeagueSelector } from "./LeagueSelector";
 import { leagues } from "@/lib/mock-data";
@@ -23,9 +25,11 @@ const navItems = [
   { href: "/dashboard", label: "数据驾驶舱", icon: LayoutDashboard },
   { href: "/lineup", label: "阵容战术板", icon: Users },
   { href: "/prediction", label: "胜率推演", icon: Target },
+  { href: "/predictions", label: "预测记录", icon: History },
   { href: "/script", label: "AI 口播稿", icon: FileText },
   { href: "/overlay", label: "OBS 覆盖层", icon: Monitor },
   { href: "/data", label: "数据源", icon: Database },
+  { href: "/users", label: "用户管理", icon: UserCog },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

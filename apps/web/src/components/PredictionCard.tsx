@@ -1,6 +1,9 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
+import { progressBarAnimate } from "@/lib/animations";
+import { Card } from "@/components/Card";
 
 interface PredictionCardProps {
   homeWin: number;
@@ -10,20 +13,19 @@ interface PredictionCardProps {
   awayTeam: string;
 }
 
-export function PredictionCard({
+export const PredictionCard = memo(function PredictionCard({
   homeWin,
   draw,
   awayWin,
   homeTeam,
   awayTeam,
 }: PredictionCardProps) {
-  const max = Math.max(homeWin, draw, awayWin);
+  const max = useMemo(() => Math.max(homeWin, draw, awayWin), [homeWin, draw, awayWin]);
 
   return (
-    <div className="card space-y-3">
-      <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-        胜率推演
-      </div>
+    <Card className="space-y-3">
+      <Card.Header>胜率推演</Card.Header>
+      <Card.Body>
       <div className="grid grid-cols-3 gap-2 text-center">
         {[
           { label: homeTeam, value: homeWin, color: "var(--accent-green)" },
@@ -40,9 +42,7 @@ export function PredictionCard({
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-primary)]">
               <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${(item.value / max) * 100}%` }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
+                {...progressBarAnimate((item.value / max) * 100)}
                 className="h-full rounded-full"
                 style={{ backgroundColor: item.color }}
               />
@@ -50,6 +50,7 @@ export function PredictionCard({
           </div>
         ))}
       </div>
-    </div>
+      </Card.Body>
+    </Card>
   );
-}
+});

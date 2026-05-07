@@ -5,6 +5,7 @@ import type {
   ShortVideoInput,
   LowerThirdInput,
   PredictionStripInput,
+  DisciplineRiskAlertInput,
   LineupPlayer,
 } from "./types.js";
 
@@ -21,6 +22,19 @@ function escapeXml(s: string): string {
 
 function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
+}
+
+const DISCLAIMER = "For commentary assistance, not betting advice.";
+const DEFAULT_DATA_SOURCE = "LineupCast";
+
+/** SVG fragment: disclaimer text anchored bottom-centre. */
+function disclaimerSvg(w: number, h: number): string {
+  return `<text x="${w / 2}" y="${h - 12}" text-anchor="middle" font-size="12" fill="#555" font-family="system-ui,sans-serif">${escapeXml(DISCLAIMER)}</text>`;
+}
+
+/** SVG fragment: data source attribution anchored bottom-left. */
+function dataSourceSvg(_w: number, h: number, source: string): string {
+  return `<text x="12" y="${h - 12}" font-size="11" fill="#444" font-family="system-ui,sans-serif">Data: ${escapeXml(source)}</text>`;
 }
 
 // ─── Player dot + label ────────────────────────────────────────────
@@ -99,6 +113,8 @@ export function renderLineupScene16x9(input: LineupSceneInput): string {
   </g>
   ${playerSvg(input.homePlayers, "#e63946", "#fff", false)}
   ${playerSvg(input.awayPlayers, "#457b9d", "#fff", true)}
+  ${dataSourceSvg(W, H, DEFAULT_DATA_SOURCE)}
+  ${disclaimerSvg(W, H)}
 </svg>`;
 }
 
@@ -154,6 +170,9 @@ export function renderShortVideo9x16(input: ShortVideoInput): string {
 
   <!-- Confidence -->
   <text x="${W / 2}" y="680" text-anchor="middle" font-size="18" fill="#666" font-family="system-ui,sans-serif">Confidence: ${input.prediction.confidence}</text>
+
+  ${dataSourceSvg(W, H, DEFAULT_DATA_SOURCE)}
+  ${disclaimerSvg(W, H)}
 </svg>`;
 }
 
@@ -182,6 +201,7 @@ export function renderLowerThird(input: LowerThirdInput): string {
   <text x="24" y="45" font-size="28" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">${escapeXml(input.player.name)}</text>
   <text x="24" y="75" font-size="16" fill="#aaa" font-family="system-ui,sans-serif">${escapeXml(input.team.shortName)}${input.player.shirtNumber != null ? ` · #${input.player.shirtNumber}` : ""} · ${escapeXml(input.player.position)}</text>
   ${statsHtml}
+  <text x="${W - 12}" y="${H - 10}" text-anchor="end" font-size="9" fill="#444" font-family="system-ui,sans-serif">${escapeXml(DISCLAIMER)} | Data: ${escapeXml(DEFAULT_DATA_SOURCE)}</text>
 </svg>`;
 }
 
@@ -212,5 +232,74 @@ export function renderPredictionStrip(input: PredictionStripInput): string {
   <text x="${20 + barW * input.prediction.homeWin / 2}" y="${barY + 17}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">${pct(input.prediction.homeWin)}</text>
   <text x="${20 + barW * (input.prediction.homeWin + input.prediction.draw / 2)}" y="${barY + 17}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">${pct(input.prediction.draw)}</text>
   <text x="${20 + barW * (input.prediction.homeWin + input.prediction.draw + input.prediction.awayWin / 2)}" y="${barY + 17}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">${pct(input.prediction.awayWin)}</text>
+  <text x="${W - 8}" y="${H - 6}" text-anchor="end" font-size="8" fill="#444" font-family="system-ui,sans-serif">${escapeXml(DISCLAIMER)}</text>
+</svg>`;
+}
+
+// ─── Discipline Risk Alert ──────────────────────────────────────
+
+/** Render a discipline risk alert overlay for card-risk warnings. */
+export function renderDisciplineRiskAlert(
+  input: DisciplineRiskAlertInput,
+  aspect: "16:9" | "9:16" = "16:9",
+): string {
+  const isWide = aspect === "16:9";
+  const W = isWide ? 1920 : 1080;
+  const H = isWide ? 1080 : 1920;
+  const source = input.dataSource ?? DEFAULT_DATA_SOURCE;
+
+  const riskColor = (level: string) =>
+    level === "high" ? "#e63946" : level === "medium" ? "#f4a261" : "#2a9d8f";
+
+  const riskIcon = (level: string) =>
+    level === "high" ? "⚠" : level === "medium" ? "◆" : "•";
+
+  // Sort players by yellowRisk descending so highest risk appears first
+  const sorted = [...input.players].sort((a, b) => b.yellowRisk - a.yellowRisk);
+  const maxRows = isWide ? 8 : 12;
+  const shown = sorted.slice(0, maxRows);
+  const rowH = isWide ? 52 : 56;
+  const startY = isWide ? 160 : 200;
+
+  const playerRows = shown
+    .map((p, i) => {
+      const y = startY + i * rowH;
+      const color = riskColor(p.redRisk);
+      const icon = riskIcon(p.redRisk);
+      const barWidth = (p.yellowRisk / 100) * (isWide ? 300 : 260);
+      return `
+    <rect x="${isWide ? 60 : 40}" y="${y - 8}" width="${isWide ? W - 120 : W - 80}" height="${rowH - 12}" rx="6" fill="#1a1a2e" stroke="${color}" stroke-width="1"/>
+    <text x="${isWide ? 80 : 55}" y="${y + 20}" font-size="16" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">${escapeXml(p.name)}</text>
+    <text x="${isWide ? 80 : 55}" y="${y + 38}" font-size="12" fill="#888" font-family="system-ui,sans-serif">${escapeXml(p.team)} | ${p.foulsPer90.toFixed(1)} fouls/90</text>
+    <rect x="${isWide ? 500 : 380}" y="${y + 8}" width="${isWide ? 300 : 260}" height="14" rx="7" fill="#222"/>
+    <rect x="${isWide ? 500 : 380}" y="${y + 8}" width="${barWidth}" height="14" rx="7" fill="${color}"/>
+    <text x="${isWide ? 810 : 650}" y="${y + 22}" font-size="14" fill="#aaa" font-family="system-ui,sans-serif">${p.yellowRisk}%</text>
+    <text x="${isWide ? 880 : 710}" y="${y + 22}" font-size="14" fill="${color}" font-family="system-ui,sans-serif">${icon} ${escapeXml(p.redRisk)}</text>`;
+    })
+    .join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="draBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#draBg)"/>
+
+  <!-- Header -->
+  <text x="${W / 2}" y="${isWide ? 60 : 80}" text-anchor="middle" font-size="28" font-weight="700" fill="#e63946" font-family="system-ui,sans-serif">Card Risk Alert</text>
+  <text x="${W / 2}" y="${isWide ? 95 : 120}" text-anchor="middle" font-size="18" fill="#aaa" font-family="system-ui,sans-serif">${escapeXml(input.homeTeam.shortName)} vs ${escapeXml(input.awayTeam.shortName)}</text>
+  <text x="${W / 2}" y="${isWide ? 125 : 155}" text-anchor="middle" font-size="14" fill="#666" font-family="system-ui,sans-serif">${escapeXml(input.match.league)}</text>
+
+  <!-- Column headers -->
+  <text x="${isWide ? 80 : 55}" y="${isWide ? 148 : 185}" font-size="12" fill="#555" font-family="system-ui,sans-serif">PLAYER</text>
+  <text x="${isWide ? 500 : 380}" y="${isWide ? 148 : 185}" font-size="12" fill="#555" font-family="system-ui,sans-serif">YELLOW CARD RISK</text>
+  <text x="${isWide ? 880 : 710}" y="${isWide ? 148 : 185}" font-size="12" fill="#555" font-family="system-ui,sans-serif">RED RISK</text>
+
+  ${playerRows}
+
+  ${dataSourceSvg(W, H, source)}
+  ${disclaimerSvg(W, H)}
 </svg>`;
 }

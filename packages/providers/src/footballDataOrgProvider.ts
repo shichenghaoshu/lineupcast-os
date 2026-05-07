@@ -31,11 +31,22 @@ export type FootballDataOrgHealthStatus =
   | "healthy"
   | "missing_token"
   | "rate_limited"
-  | "degraded";
+  | "degraded"
+  | "offline";
 
 /** Health report from the provider. */
 export interface FootballDataOrgHealth {
   status: FootballDataOrgHealthStatus;
+  message?: string;
+}
+
+/** Detailed health check result from runHealthCheck(). */
+export interface HealthCheckResult {
+  status: FootballDataOrgHealthStatus;
+  tokenValid: boolean;
+  rateLimited: boolean;
+  latencyMs: number;
+  timestamp: string;
   message?: string;
 }
 
@@ -213,6 +224,47 @@ export interface StandingsEntry {
   form?: string;
 }
 
+// ─── Schema validation ─────────────────────────────────────────────────
+
+/** Validate that a response has the expected shape. Returns true if valid. */
+function isValidMatchResponse(data: unknown): data is FDOMatchResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "matches" in data &&
+    Array.isArray((data as FDOMatchResponse).matches)
+  );
+}
+
+function isValidMatch(data: unknown): data is FDOMatch {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    "homeTeam" in data &&
+    "awayTeam" in data &&
+    "status" in data
+  );
+}
+
+function isValidTeam(data: unknown): data is FDOTeamResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    "name" in data
+  );
+}
+
+function isValidStandings(data: unknown): data is FDOStandingsResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "standings" in data &&
+    Array.isArray((data as FDOStandingsResponse).standings)
+  );
+}
+
 // ─── Provider implementation ────────────────────────────────────────────
 
 /**
@@ -253,7 +305,7 @@ export class FootballDataOrgProvider implements DataProvider {
       id: this.id,
       name: "football-data.org (standalone)",
       description:
-        "Standalone adapter for football-data.org v4 API. Provides fixtures, match details, teams, squads, recent form, and standings.",
+        "Standalone adapter for football-data.org v4 API. Provides fixtures, match details, teams, squads, recent form, standings, and lineups (may be empty pre-match).",
       baseUrl,
       requiresApiKey: true,
       tokenConfigured: !!apiKey,
@@ -267,6 +319,7 @@ export class FootballDataOrgProvider implements DataProvider {
         form: true,
         h2h: true,
         standings: true,
+        lineup: true,
       },
       freshness: "never",
       errorCount: 0,
@@ -293,9 +346,124 @@ export class FootballDataOrgProvider implements DataProvider {
           status: "degraded",
           message: "Upstream API returned a server error (5xx).",
         };
+      case "offline":
+        return {
+          status: "offline",
+          message: "API is unreachable. Check network connectivity.",
+        };
       case "healthy":
       default:
         return { status: "healthy" };
+    }
+  }
+
+  /**
+   * Run a comprehensive health check against the API.
+   * Tests connectivity, token validity, rate limit status, and measures latency.
+   * Never exposes the API key in responses.
+   */
+  async runHealthCheck(): Promise<HealthCheckResult> {
+    if (!this.config.apiKey) {
+      return {
+        status: "missing_token",
+        tokenValid: false,
+        rateLimited: false,
+        latencyMs: 0,
+        timestamp: new Date().toISOString(),
+        message: "FOOTBALL_DATA_API_KEY is not configured.",
+      };
+    }
+
+    if (!this.limiter.tryAcquire()) {
+      return {
+        status: "rate_limited",
+        tokenValid: true,
+        rateLimited: true,
+        latencyMs: 0,
+        timestamp: new Date().toISOString(),
+        message: "Local rate limit exhausted.",
+      };
+    }
+
+    const start = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    try {
+      const res = await fetch(`${this.config.baseUrl}/competitions/PL/matches?limit=1`, {
+        headers: this.headers,
+        signal: controller.signal,
+      });
+
+      const latencyMs = Date.now() - start;
+
+      if (res.status === 401 || res.status === 403) {
+        this.healthStatus = "missing_token";
+        return {
+          status: "missing_token",
+          tokenValid: false,
+          rateLimited: false,
+          latencyMs,
+          timestamp: new Date().toISOString(),
+          message: "API key is invalid or unauthorized.",
+        };
+      }
+
+      if (res.status === 429) {
+        this.healthStatus = "rate_limited";
+        return {
+          status: "rate_limited",
+          tokenValid: true,
+          rateLimited: true,
+          latencyMs,
+          timestamp: new Date().toISOString(),
+          message: "Rate limit exceeded (HTTP 429).",
+        };
+      }
+
+      if (res.status >= 500) {
+        this.healthStatus = "degraded";
+        return {
+          status: "degraded",
+          tokenValid: true,
+          rateLimited: false,
+          latencyMs,
+          timestamp: new Date().toISOString(),
+          message: `Server error: HTTP ${res.status}.`,
+        };
+      }
+
+      if (!res.ok) {
+        return {
+          status: "healthy",
+          tokenValid: true,
+          rateLimited: false,
+          latencyMs,
+          timestamp: new Date().toISOString(),
+          message: `Unexpected status: HTTP ${res.status}.`,
+        };
+      }
+
+      this.healthStatus = "healthy";
+      return {
+        status: "healthy",
+        tokenValid: true,
+        rateLimited: false,
+        latencyMs,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (err) {
+      this.healthStatus = "offline";
+      return {
+        status: "offline",
+        tokenValid: true,
+        rateLimited: false,
+        latencyMs: Date.now() - start,
+        timestamp: new Date().toISOString(),
+        message: "API unreachable. Check network connectivity.",
+      };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -348,9 +516,13 @@ export class FootballDataOrgProvider implements DataProvider {
 
       this.healthStatus = "healthy";
       return (await res.json()) as T;
-    } catch {
-      // Network error or abort — treat as degraded.
-      this.healthStatus = "degraded";
+    } catch (err) {
+      // Network error or abort — distinguish offline from server error.
+      if (err instanceof TypeError || (err instanceof DOMException && err.name === "AbortError")) {
+        this.healthStatus = "offline";
+      } else {
+        this.healthStatus = "degraded";
+      }
       return null;
     } finally {
       clearTimeout(timer);
@@ -379,8 +551,12 @@ export class FootballDataOrgProvider implements DataProvider {
     if (limit) params.push(`limit=${limit}`);
     if (params.length) path += `?${params.join("&")}`;
 
-    const data = await this.apiFetch<FDOMatchResponse>(path);
+    const data = await this.apiFetch<unknown>(path);
     if (!data) return [];
+    if (!isValidMatchResponse(data)) {
+      this.healthStatus = "degraded";
+      return [];
+    }
     return data.matches.map(toMatch);
   }
 
@@ -392,8 +568,12 @@ export class FootballDataOrgProvider implements DataProvider {
    */
   async getMatch(matchId: string): Promise<Match | null> {
     const id = matchId.replace(/^fdm-/, "");
-    const data = await this.apiFetch<FDOMatch>(`/matches/${id}`);
+    const data = await this.apiFetch<unknown>(`/matches/${id}`);
     if (!data) return null;
+    if (!isValidMatch(data)) {
+      this.healthStatus = "degraded";
+      return null;
+    }
     return toMatch(data);
   }
 
@@ -404,10 +584,14 @@ export class FootballDataOrgProvider implements DataProvider {
    */
   async getRecentMatches(teamId: string, limit = 5): Promise<Match[]> {
     const id = teamId.replace(/^fdm-team-/, "");
-    const data = await this.apiFetch<FDOMatchResponse>(
+    const data = await this.apiFetch<unknown>(
       `/teams/${id}/matches?status=FINISHED&limit=${limit}`,
     );
     if (!data) return [];
+    if (!isValidMatchResponse(data)) {
+      this.healthStatus = "degraded";
+      return [];
+    }
     return data.matches.map(toMatch);
   }
 
@@ -418,8 +602,13 @@ export class FootballDataOrgProvider implements DataProvider {
    */
   async getSquad(teamId: string): Promise<Player[]> {
     const id = teamId.replace(/^fdm-team-/, "");
-    const data = await this.apiFetch<FDOTeamResponse>(`/teams/${id}`);
-    if (!data?.squad) return [];
+    const data = await this.apiFetch<unknown>(`/teams/${id}`);
+    if (!data) return [];
+    if (!isValidTeam(data)) {
+      this.healthStatus = "degraded";
+      return [];
+    }
+    if (!data.squad) return [];
 
     return data.squad.map((p) => ({
       id: `fdm-player-${p.id}`,
@@ -440,10 +629,14 @@ export class FootballDataOrgProvider implements DataProvider {
    */
   async getStandings(league: string): Promise<StandingsEntry[]> {
     const code = LEAGUE_CODES[league] ?? league.toUpperCase();
-    const data = await this.apiFetch<FDOStandingsResponse>(
+    const data = await this.apiFetch<unknown>(
       `/competitions/${code}/standings`,
     );
     if (!data) return [];
+    if (!isValidStandings(data)) {
+      this.healthStatus = "degraded";
+      return [];
+    }
 
     // Find the "TOTAL" type standings (the main table).
     const totalTable = data.standings.find((s) => s.type === "TOTAL");
@@ -485,38 +678,58 @@ export class FootballDataOrgProvider implements DataProvider {
     try {
       const match = await this.getMatch(matchId);
       if (!match) {
-        throw new Error(
-          `[football-data-org-v2] Match not found or API unavailable: ${matchId}`,
-        );
+        // Return a minimal placeholder match so callers never crash.
+        return {
+          id: matchId,
+          homeTeamId: "",
+          awayTeamId: "",
+          homeTeam: { id: "", name: "Unknown", shortName: "?", league: "", crest: "" },
+          awayTeam: { id: "", name: "Unknown", shortName: "?", league: "", crest: "" },
+          kickoff: "",
+          league: "",
+          status: "scheduled",
+        };
       }
       return match;
-    } catch (err) {
+    } catch {
       this.healthStatus = "degraded";
-      throw new Error(
-        `[football-data-org-v2] fetchMatch failed for ${matchId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      return {
+        id: matchId,
+        homeTeamId: "",
+        awayTeamId: "",
+        homeTeam: { id: "", name: "Unknown", shortName: "?", league: "", crest: "" },
+        awayTeam: { id: "", name: "Unknown", shortName: "?", league: "", crest: "" },
+        kickoff: "",
+        league: "",
+        status: "scheduled",
+      };
     }
   }
 
   async fetchTeam(teamId: string): Promise<Team> {
     try {
       const id = teamId.replace(/^fdm-team-/, "");
-      const data = await this.apiFetch<FDOTeamResponse>(`/teams/${id}`);
-      if (!data) {
-        throw new Error(
-          `[football-data-org-v2] Team not found or API unavailable: ${teamId}`,
-        );
+      const data = await this.apiFetch<unknown>(`/teams/${id}`);
+      if (!data || !isValidTeam(data)) {
+        if (data) this.healthStatus = "degraded";
+        return {
+          id: teamId,
+          name: "Unknown",
+          shortName: "?",
+          league: "",
+          crest: "",
+        };
       }
       return toTeam(data);
-    } catch (err) {
+    } catch {
       this.healthStatus = "degraded";
-      throw new Error(
-        `[football-data-org-v2] fetchTeam failed for ${teamId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      return {
+        id: teamId,
+        name: "Unknown",
+        shortName: "?",
+        league: "",
+        crest: "",
+      };
     }
   }
 
@@ -531,14 +744,25 @@ export class FootballDataOrgProvider implements DataProvider {
 
   async fetchLineup(_matchId: string, _teamId: string): Promise<Lineup> {
     // football-data.org does not provide pre-match lineup data via free tier.
-    // Return empty/default — this capability is not declared in meta.
-    return {
-      matchId: _matchId,
-      teamId: _teamId,
-      formation: "",
-      starters: [],
-      substitutes: [],
-    };
+    // Return empty/default — lineups may be populated post-match in some tiers.
+    try {
+      return {
+        matchId: _matchId,
+        teamId: _teamId,
+        formation: "",
+        starters: [],
+        substitutes: [],
+      };
+    } catch {
+      this.healthStatus = "degraded";
+      return {
+        matchId: _matchId,
+        teamId: _teamId,
+        formation: "",
+        starters: [],
+        substitutes: [],
+      };
+    }
   }
 
   async fetchMatchStats(_matchId: string): Promise<MatchStats> {

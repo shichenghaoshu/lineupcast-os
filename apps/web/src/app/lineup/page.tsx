@@ -5,13 +5,16 @@ import { TopBar } from "@/components/TopBar";
 import { FormationPitch } from "@/components/FormationPitch";
 import { PlayerCard } from "@/components/PlayerCard";
 import { DemoBadge } from "@/components/DemoBadge";
+import { Dropdown } from "@/components/Dropdown";
+import { useTranslation } from "@/lib/i18n";
 import { loadLineups } from "@/lib/data-loader";
 import type { Player } from "@/lib/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 
 type Formation = "4-2-3-1" | "4-3-3";
 
 export default function LineupPage() {
+  const { t } = useTranslation();
   const [formation, setFormation] = useState<Formation>("4-2-3-1");
   const [starters, setStarters] = useState<Player[]>([]);
   const [isDemo, setIsDemo] = useState(false);
@@ -49,7 +52,7 @@ export default function LineupPage() {
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-[var(--accent-blue)]" />
         <span className="ml-2 text-sm text-[var(--text-muted)]">
-          Loading lineup...
+          {t.lineup.loading}
         </span>
       </div>
     );
@@ -59,7 +62,7 @@ export default function LineupPage() {
     <div className="min-h-screen">
       <div className="flex items-center justify-between">
         <TopBar
-          title="阵容战术板"
+          title={t.lineup.title}
           subtitle={`Manchester Red ${formation} vs Shanghai Harbor 4-3-3`}
         />
         {isDemo && (
@@ -72,20 +75,28 @@ export default function LineupPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6">
         {/* Formation selector */}
         <div className="lg:col-span-12 flex items-center gap-3">
-          <span className="text-xs text-[var(--text-muted)]">阵型:</span>
-          {(["4-2-3-1", "4-3-3"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFormation(f)}
-              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                formation === f
-                  ? "bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-card)]"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+          <span className="text-xs text-[var(--text-muted)]">{t.lineup.formation}:</span>
+          <Dropdown
+            trigger={
+              <button className="flex items-center gap-2 rounded-md border border-[var(--border-color)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)]">
+                {formation}
+                <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              </button>
+            }
+            items={[
+              {
+                id: "f-4231",
+                label: "4-2-3-1",
+                onClick: () => setFormation("4-2-3-1"),
+              },
+              {
+                id: "f-433",
+                label: "4-3-3",
+                onClick: () => setFormation("4-3-3"),
+              },
+            ]}
+            width="w-40"
+          />
         </div>
 
         {/* Tactical pitch */}
@@ -99,7 +110,7 @@ export default function LineupPage() {
         <div className="lg:col-span-5 space-y-4">
           <div className="card space-y-2">
             <div className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              Tactical Insights / 战术洞察
+              {t.lineup.tacticalInsights}
             </div>
             <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
               B. Vision 将在前腰区域连接两翼，C. Press 负责高位压迫。
@@ -110,7 +121,7 @@ export default function LineupPage() {
           {/* Starters */}
           <div className="card">
             <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              首发球员 ({starters.length})
+              {t.lineup.starters} ({starters.length})
             </div>
             <div className="space-y-1.5">
               {starters.map((p) => (

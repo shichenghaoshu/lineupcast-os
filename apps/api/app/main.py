@@ -10,6 +10,7 @@ from .security import require_admin
 from . import services
 from .leagues import get_leagues, get_league_by_id
 from .routes.imports import router as imports_router
+from .routes.users import router as users_router
 from .schemas import (
     BacktestResponse,
     HealthResponse,
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
 
 def register_routes(api: FastAPI) -> None:
     api.include_router(imports_router)
+    api.include_router(users_router)
 
     @api.get("/healthz", response_model=HealthResponse)
     async def healthz(settings: Settings = Depends(get_settings)) -> HealthResponse:

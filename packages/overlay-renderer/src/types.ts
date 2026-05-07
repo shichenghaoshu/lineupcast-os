@@ -46,10 +46,33 @@ export interface PredictionStripInput {
   prediction: Prediction;
 }
 
+/** Discipline risk alert data for card warning overlays. */
+export interface DisciplineRiskPlayer {
+  name: string;
+  team: string;
+  yellowRisk: number;   // 0-100
+  redRisk: "low" | "medium" | "high";
+  foulsPer90: number;
+}
+
+/** Input for the discipline risk alert overlay. */
+export interface DisciplineRiskAlertInput {
+  match: Match;
+  homeTeam: Team;
+  awayTeam: Team;
+  players: DisciplineRiskPlayer[];
+  dataSource?: string;
+}
+
+/** Aspect ratio for overlay scenes. */
+export type AspectRatio = "16:9" | "9:16";
+
 /** Exported overlay payload (JSON serialisable). */
 export interface OverlayExportPayload {
   version: string;
   generatedAt: string;
+  dataSource: string;
+  disclaimer: string;
   scenes: Array<{
     id: string;
     type: string;
@@ -57,4 +80,20 @@ export interface OverlayExportPayload {
     width: number;
     height: number;
   }>;
+}
+
+/** A single entry in the overlay export audit trail. */
+export interface OverlayExportHistoryEntry {
+  id: string;
+  exportedAt: string;
+  format: "json" | "svg" | "png" | "html" | "browser-source";
+  sceneCount: number;
+  dataSource: string;
+  url?: string;
+}
+
+/** Full history of overlay exports for audit / replay. */
+export interface OverlayExportHistory {
+  matchId: string;
+  entries: OverlayExportHistoryEntry[];
 }

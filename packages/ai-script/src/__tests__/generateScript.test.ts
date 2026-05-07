@@ -353,7 +353,7 @@ describe("scriptOutputSchema", () => {
     expect(required).toContain("language");
     expect(required).toContain("style");
     expect(required).toContain("duration");
-    expect(required.length).toBe(11);
+    expect(required.length).toBe(12);
   });
 
   it("has correct schema type", () => {

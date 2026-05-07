@@ -8,7 +8,7 @@ export const scriptOutputSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
   title: "ScriptOutput",
   description:
-    "Structured commentary script output. AI/LLM rewrites must not invent probabilities or absolute claims.",
+    "Structured commentary script output. AI/LLM rewrites must not invent probabilities or absolute claims. All outputs include disclaimer and grounding references.",
   type: "object",
   required: [
     "opening",
@@ -22,6 +22,7 @@ export const scriptOutputSchema = {
     "language",
     "style",
     "duration",
+    "disclaimer",
   ],
   properties: {
     opening: {
@@ -79,6 +80,35 @@ export const scriptOutputSchema = {
       type: "string",
       enum: ["separate", "paragraph-by-paragraph"],
       description: "How bilingual scripts are arranged.",
+    },
+    disclaimer: {
+      type: "string",
+      description: "Disclaimer text. AI narrates, never directly predicts outcomes. Not betting advice.",
+    },
+    grounding: {
+      type: "array",
+      description: "Grounding report: traceability for each sentence back to input data sources.",
+      items: {
+        type: "object",
+        properties: {
+          sentenceIndex: { type: "number" },
+          sentence: { type: "string" },
+          sources: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                field: { type: "string" },
+                provider: { type: "string" },
+                sourceType: { type: "string", enum: ["prediction", "lineup", "stats", "form"] },
+                sourcePath: { type: "string" },
+                confidence: { type: "number" },
+              },
+            },
+          },
+          confidence: { type: "number" },
+        },
+      },
     },
   },
   additionalProperties: false,

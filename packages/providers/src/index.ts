@@ -9,15 +9,37 @@ export {
   SportmonksProvider,
   ApiFootballProvider,
 } from "./adapters.js";
+export { CsvProvider } from "./csvProvider.js";
+export type {
+  CsvProviderData,
+  CsvLineupRow,
+  CsvPlayerStatsRow,
+  CsvMatchHistoryRow,
+} from "./csvProvider.js";
+export { TheSportsProvider } from "./theSportsProvider.js";
+export { SportmonksProvider as SportmonksScaffoldProvider } from "./sportmonksProvider.js";
+export { ApiFootballScaffoldProvider } from "./apiFootballProvider.js";
 export {
   getProvider,
+  getProviderByType,
   listProviders,
   listReadyProviders,
   registerProvider,
   getFreshnessTracker,
   getProviderFreshness,
   getAllProviderFreshness,
+  listProvidersByCapability,
+  isProviderReady,
+  // Health tracking
+  recordProviderSuccess,
+  recordProviderError,
+  getProviderHealth,
+  getAllProviderHealth,
+  isProviderHealthy,
+  // Fallback chain
+  getProviderWithFallback,
 } from "./registry.js";
+export type { ProviderHealth, ProviderHealthEntry } from "./registry.js";
 export {
   RateLimiter,
   FOOTBALL_DATA_ORG_LIMITER,

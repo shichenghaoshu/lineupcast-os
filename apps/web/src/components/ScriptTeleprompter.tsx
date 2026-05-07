@@ -29,7 +29,7 @@ export function ScriptTeleprompter({ text, title }: ScriptTeleprompterProps) {
           <div className="text-sm font-medium">{title}</div>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
+            className="flex items-center gap-1 rounded px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)] active:bg-[var(--bg-card)]"
           >
             {copied ? (
               <Check className="h-3 w-3 text-[var(--accent-green)]" />
@@ -40,8 +40,8 @@ export function ScriptTeleprompter({ text, title }: ScriptTeleprompterProps) {
           </button>
         </div>
       )}
-      <div className="max-h-64 overflow-y-auto rounded bg-[var(--bg-primary)] p-3 font-mono text-sm leading-relaxed text-[var(--text-primary)]">
-        {text}
+      <div className="max-h-48 sm:max-h-64 overflow-y-auto rounded bg-[var(--bg-primary)] p-3 font-mono text-sm leading-relaxed text-[var(--text-primary)] select-text">
+        {text || "等待生成..."}
       </div>
     </motion.div>
   );

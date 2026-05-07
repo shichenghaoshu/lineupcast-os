@@ -60,3 +60,55 @@ curl http://localhost:${API_PORT:-8000}/health
 ```
 
 The compose file does not start Postgres unless a future profile adds it. This keeps the demo deployment lightweight and avoids requiring database credentials for the default run path.
+
+## Production-like Local Testing
+
+To test with PostgreSQL, Redis, and Nginx locally, use the production compose file:
+
+```bash
+cp .env.production.example .env
+# Edit .env and set at least POSTGRES_PASSWORD
+docker compose -f docker-compose.prod.yml up --build
+```
+
+This starts all five services (web, api, postgres, redis, nginx). Access the app at `http://localhost`.
+
+## Troubleshooting
+
+### Build fails with missing package.json
+
+The Dockerfile copies package manifests individually for layer caching. If you added a new workspace package, add its `package.json` COPY line to the relevant Dockerfile (`apps/api/Dockerfile` or `apps/web/Dockerfile`).
+
+### Port already in use
+
+Change the port mapping in `.env` or stop the conflicting process:
+
+```bash
+lsof -i :8000
+lsof -i :3000
+```
+
+### API container exits immediately
+
+Check logs:
+
+```bash
+docker compose logs api
+```
+
+Common causes:
+- Missing Python dependency in `requirements.txt`
+- Syntax error in application code
+- Missing environment variable
+
+### Web container fails to build
+
+Ensure `output: "standalone"` is set in `apps/web/next.config.ts`. The `apps/web/Dockerfile` depends on this to produce a minimal production image.
+
+### Slow first build
+
+The first build downloads and caches all dependencies. Subsequent builds use Docker layer caching and are much faster. Use `--no-cache` only when troubleshooting:
+
+```bash
+docker compose up --build --no-cache
+```

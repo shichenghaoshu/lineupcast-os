@@ -27,6 +27,8 @@ from .schemas import (
     ModelCardDataSnapshot,
     ModelCardFailureSegment,
     ModelCardMetrics,
+    ModelComparisonItem,
+    ModelComparisonResponse,
     ModelEvaluation,
     ModelInfo,
     ModelReference,
@@ -899,6 +901,45 @@ def get_model_evaluation(settings: Settings, model_id: str) -> ModelEvaluation:
         brierScore=0.19,
         lastEvaluatedAt=now_utc(),
     )
+
+
+def compare_models(
+    settings: Settings, model_ids_param: str, match_id: str | None = None
+) -> ModelComparisonResponse:
+    """Build a side-by-side comparison of multiple models.
+
+    Each item includes the model's info, its model-card metrics, calibration
+    bins, and evaluation data so the frontend can render comparison charts.
+    """
+    all_models = list_models(settings)
+
+    # Parse requested model IDs (comma-separated); default to all models
+    if model_ids_param.strip():
+        requested = {mid.strip() for mid in model_ids_param.split(",") if mid.strip()}
+        selected = [m for m in all_models if m.modelId in requested]
+    else:
+        selected = all_models
+
+    items: list[ModelComparisonItem] = []
+    for model in selected:
+        # Fetch model card for metrics and calibration
+        card = get_model_card(settings, model.modelId)
+        evaluation = get_model_evaluation(settings, model.modelId)
+
+        items.append(
+            ModelComparisonItem(
+                modelId=model.modelId,
+                name=model.name,
+                version=model.version,
+                task=model.task,
+                status=model.status,
+                metrics=card.metrics,
+                calibrationBins=card.calibrationBins,
+                evaluation=evaluation,
+            )
+        )
+
+    return ModelComparisonResponse(models=items, matchId=match_id)
 
 
 def backtest_model(settings: Settings, payload: ModelBacktestRequest) -> BacktestResponse:

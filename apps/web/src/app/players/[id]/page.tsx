@@ -122,9 +122,9 @@ export default function PlayerPage() {
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left: Radar + Stats */}
-          <div className="col-span-5 space-y-4">
+          <div className="lg:col-span-5 space-y-4">
             <div className="card">
               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 VAEP 能力雷达图
@@ -193,7 +193,7 @@ export default function PlayerPage() {
           </div>
 
           {/* Right: Details */}
-          <div className="col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4">
             {/* Key player question */}
             <div className="card space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -232,7 +232,7 @@ export default function PlayerPage() {
             </div>
 
             {/* Stat grid */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
                 { label: "xG / 5场", value: player.xGLast5.toFixed(1), icon: Target, color: "green" },
                 { label: "射门 / 5场", value: player.shotsLast5, icon: Crosshair, color: "blue" },

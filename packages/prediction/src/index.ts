@@ -277,6 +277,7 @@ export {
 export {
   predictDixonColesFromHistory,
   type Confidence,
+  type DegradationFlags,
   type DixonColesHistoryInput,
   type DixonColesPrediction,
   type MatchHistoryRecord,
@@ -289,6 +290,7 @@ export {
   type LineupRatingAdjustmentResult,
   type PlayerRatingAdjustment,
   type PlayerRatingAdjustmentInput,
+  type PlayerDataDegradationFlags,
 } from "./models/playerRatingAdjustment.js";
 
 export {
@@ -334,6 +336,32 @@ export {
   type BacktestPrediction,
   type BacktestResult,
 } from "./evaluation/backtest.js";
+
+// Expected Calibration Error (ECE)
+export {
+  calculateECE,
+  type ECEInput,
+  type ECEBinDetail,
+  type ECEResult,
+} from "./evaluation/ece.js";
+
+// Reliability Curve with favorite/underdog split
+export {
+  computeReliabilityCurve,
+  type ReliabilityCurveInput,
+  type ReliabilityBucket,
+  type ReliabilityCurveResult,
+} from "./evaluation/reliabilityCurve.js";
+
+// Per-League Calibration Report
+export {
+  generateLeagueReports,
+  type LeaguePredictionRecord,
+  type OutcomeClassMetrics,
+  type FavoriteUnderdogMetrics,
+  type FailureSegmentMetrics,
+  type LeagueCalibrationReport,
+} from "./evaluation/leagueReport.js";
 
 // Calibration — MLE parameter fitting for Dixon-Coles
 export {

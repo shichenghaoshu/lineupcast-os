@@ -44,6 +44,10 @@ export {
   SCRIPT_TEMPLATES,
 } from "./templates.js";
 
+export { buildChineseSections } from "./templates/zh.js";
+export { buildEnglishSections } from "./templates/en.js";
+export { buildBilingualSections } from "./templates/bilingual.js";
+
 export { scriptOutputSchema } from "./schema.js";
 
 export type { ValidationResult } from "./forbidden.js";

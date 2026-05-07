@@ -5,11 +5,12 @@ import type {
   ScriptGenerationOutput,
   ScriptSections,
   SourceRef,
+  SourceType,
   GroundingReport,
 } from "./types.js";
 
 // Re-export for convenience
-export type { SourceRef, GroundingReport } from "./types.js";
+export type { SourceRef, SourceType, GroundingReport } from "./types.js";
 
 /**
  * Section name to field-path mapping.
@@ -102,6 +103,21 @@ const PROVIDER_MAP: Record<string, string> = {
   "duration": "user-config",
   "language": "user-config",
   "audience": "user-config",
+};
+
+/**
+ * Map top-level field keys to source types for grounding traceability.
+ */
+const SOURCE_TYPE_MAP: Record<string, SourceType> = {
+  "match": "form",
+  "lineups": "lineup",
+  "prediction": "prediction",
+  "goalScorers": "stats",
+  "cardRisks": "stats",
+  "style": "form",
+  "duration": "form",
+  "language": "form",
+  "audience": "form",
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -203,10 +219,16 @@ function resolveSources(
         const key = `${path}:${String(displayValue)}`;
         if (!seen.has(key)) {
           seen.add(key);
+          const provider = resolveProvider(path);
+          const sourceType = resolveSourceType(path);
           sources.push({
             field: path,
             value,
-            provider: resolveProvider(path),
+            provider,
+            sourceType,
+            sourcePath: path,
+            sourceValue: value,
+            confidence: computeSourceConfidence(value, displayValue),
           });
         }
       }
@@ -218,10 +240,16 @@ function resolveSources(
       if (fieldValue !== undefined && isReferencedInSentence(sentence, path, fieldValue)) {
         if (!seen.has(path)) {
           seen.add(path);
+          const provider = resolveProvider(path);
+          const sourceType = resolveSourceType(path);
           sources.push({
             field: path,
             value: fieldValue,
-            provider: resolveProvider(path),
+            provider,
+            sourceType,
+            sourcePath: path,
+            sourceValue: fieldValue,
+            confidence: 0.5,
           });
         }
       }
@@ -234,6 +262,10 @@ function resolveSources(
       field: "(template)",
       value: null,
       provider: "template",
+      sourceType: "form",
+      sourcePath: "(template)",
+      sourceValue: null,
+      confidence: 0.1,
     });
   }
 
@@ -403,6 +435,28 @@ function resolveProvider(path: string): string {
   return "unknown";
 }
 
+/**
+ * Resolve the source type for a field path.
+ */
+function resolveSourceType(path: string): SourceType {
+  const topLevel = path.split(".")[0];
+  if (topLevel && topLevel in SOURCE_TYPE_MAP) {
+    return SOURCE_TYPE_MAP[topLevel]!;
+  }
+  return "form";
+}
+
+/**
+ * Compute per-source confidence based on value presence and specificity.
+ */
+function computeSourceConfidence(value: unknown, displayValue: unknown): number {
+  if (value == null) return 0.1;
+  if (typeof value === "number") return 0.9;
+  if (typeof value === "string" && value.length > 0) return 0.8;
+  if (typeof displayValue === "string" && displayValue.length > 0) return 0.7;
+  return 0.5;
+}
+
 // ── Confidence scoring ────────────────────────────────────────────────────────
 
 /**
@@ -515,5 +569,58 @@ export function summarizeGrounding(reports: GroundingReport[]): {
     partiallyGrounded,
     ungrounded,
     uniqueFields: [...uniqueFieldSet].sort(),
+  };
+}
+
+// ── Grounding validation ──────────────────────────────────────────────────────
+
+export interface GroundingValidationResult {
+  valid: boolean;
+  totalSentences: number;
+  ungroundedSentences: number;
+  lowConfidenceSentences: number;
+  violations: string[];
+}
+
+/**
+ * Validate that every sentence in the grounding report has at least one real source.
+ * A "real source" is one where field !== "(template)".
+ *
+ * @param reports - Grounding reports from generateGroundingReport()
+ * @param minConfidence - Minimum acceptable per-sentence confidence (default 0.2)
+ * @returns Validation result with details on ungrounded sentences
+ */
+export function validateGrounding(
+  reports: GroundingReport[],
+  minConfidence: number = 0.2,
+): GroundingValidationResult {
+  const violations: string[] = [];
+  let ungroundedSentences = 0;
+  let lowConfidenceSentences = 0;
+
+  for (const report of reports) {
+    const hasRealSources = report.sources.some((s) => s.field !== "(template)");
+    if (!hasRealSources) {
+      ungroundedSentences += 1;
+      violations.push(
+        `Sentence ${report.sentenceIndex} has no data source: "${report.sentence.slice(0, 60)}..."`,
+      );
+    }
+    if (report.confidence < minConfidence) {
+      lowConfidenceSentences += 1;
+      if (hasRealSources) {
+        violations.push(
+          `Sentence ${report.sentenceIndex} below confidence threshold (${report.confidence.toFixed(2)} < ${minConfidence}): "${report.sentence.slice(0, 60)}..."`,
+        );
+      }
+    }
+  }
+
+  return {
+    valid: violations.length === 0,
+    totalSentences: reports.length,
+    ungroundedSentences,
+    lowConfidenceSentences,
+    violations,
   };
 }

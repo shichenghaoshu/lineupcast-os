@@ -559,6 +559,65 @@ function buildFeatureContributions(features: string[]): FeatureContribution[] {
   });
 }
 
+// ---------------------------------------------------------------------------
+// User management
+// ---------------------------------------------------------------------------
+
+export interface UserItem {
+  id: number;
+  email: string;
+  name: string;
+  role: "admin" | "editor" | "viewer";
+  isActive: boolean;
+  invitedAt: string;
+  lastLogin: string | null;
+}
+
+export interface UserListResponse {
+  users: UserItem[];
+  total: number;
+}
+
+export async function getUsers(fetcher: Fetcher = fetch): Promise<UserListResponse> {
+  return requestJson<UserListResponse>("/api/users", undefined, fetcher);
+}
+
+export async function inviteUser(
+  email: string,
+  name: string,
+  role: "admin" | "editor" | "viewer" = "viewer",
+  fetcher: Fetcher = fetch,
+): Promise<UserItem> {
+  return requestJson<UserItem>(
+    "/api/users/invite",
+    { method: "POST", body: JSON.stringify({ email, name, role }) },
+    fetcher,
+  );
+}
+
+export async function updateUserRole(
+  userId: number,
+  role: "admin" | "editor" | "viewer",
+  fetcher: Fetcher = fetch,
+): Promise<UserItem> {
+  return requestJson<UserItem>(
+    `/api/users/${userId}/role`,
+    { method: "PATCH", body: JSON.stringify({ role }) },
+    fetcher,
+  );
+}
+
+export async function deactivateUser(
+  userId: number,
+  fetcher: Fetcher = fetch,
+): Promise<{ detail: string; userId: number }> {
+  return requestJson<{ detail: string; userId: number }>(
+    `/api/users/${userId}`,
+    { method: "DELETE" },
+    fetcher,
+  );
+}
+
 function providersToLogs(providers: Array<ProviderItem | (typeof dataProviders)[number]>): ProviderLog[] {
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   const logs: ProviderLog[] = [];

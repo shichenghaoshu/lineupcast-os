@@ -313,3 +313,217 @@ For large imports, the API returns a job ID that can be polled:
 curl http://localhost:8000/api/imports/jobs/import-20260506-abc123 \
   -H "X-Admin-Key: your-admin-key"
 ```
+
+---
+
+## Template Downloads
+
+All import types have downloadable CSV templates with headers and example rows.
+
+### List All Templates
+
+```
+GET /api/import/templates
+```
+
+Response:
+```json
+{
+  "templates": {
+    "lineup": {
+      "columns": [
+        {"name": "team_name", "type": "string", "required": true, "description": "Name of the team"},
+        ...
+      ],
+      "required_columns": ["team_name", "player_name", "position", ...],
+      "optional_columns": [],
+      "filename": "lineup.csv"
+    },
+    "player_stats": { ... },
+    "match_history": { ... }
+  },
+  "downloadUrls": {
+    "lineup": "/api/import/templates/lineup",
+    "player_stats": "/api/import/templates/player_stats",
+    "match_history": "/api/import/templates/match_history"
+  }
+}
+```
+
+### Download a Template
+
+```
+GET /api/import/templates/lineup
+GET /api/import/templates/player_stats
+GET /api/import/templates/match_history
+```
+
+Returns a `text/csv` file with `Content-Disposition: attachment` header. The file includes headers and two example data rows.
+
+### curl Examples
+
+```bash
+# List all templates
+curl http://localhost:8000/api/import/templates
+
+# Download a specific template
+curl -O http://localhost:8000/api/import/templates/lineup
+curl -O http://localhost:8000/api/import/templates/player_stats
+curl -O http://localhost:8000/api/import/templates/match_history
+```
+
+---
+
+## Dry-Run Mode
+
+All import endpoints support a `dry_run` query parameter for validation without persistence.
+
+### Usage
+
+```
+POST /api/import/lineup-csv?dry_run=true
+POST /api/import/player-stats-csv?dry_run=true
+POST /api/import/match-history-csv?dry_run=true
+```
+
+### Behavior
+
+When `dry_run=true`:
+- The CSV is fully parsed and validated
+- No data is written to disk or database
+- The response includes all validation errors and warnings
+- The `dryRun` field in the response is `true`
+- The `saved` field is always `false`
+
+This is useful for:
+- Pre-validating large CSV files before committing
+- Testing CSV formatting and data quality
+- Building UI validation feedback before submission
+
+### Example Request
+
+```bash
+curl -X POST "http://localhost:8000/api/import/lineup-csv?dry_run=true" \
+  -F "file=@lineup.csv"
+```
+
+### Example Response
+
+```json
+{
+  "importType": "lineup",
+  "totalRows": 2,
+  "parsedRows": 2,
+  "skippedRows": 0,
+  "errors": [],
+  "warnings": [],
+  "missingFields": [],
+  "preview": [
+    {"team_name": "Arsenal", "player_name": "Bukayo Saka", "position": "MID", ...}
+  ],
+  "dryRun": true,
+  "saved": false,
+  "importedAt": "2026-05-07T12:00:00+00:00"
+}
+```
+
+---
+
+## Enhanced Response Format
+
+All import endpoints now return an enriched response with validation details.
+
+### Response Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `importType` | string | The type of import (lineup, player_stats, match_history) |
+| `totalRows` | integer | Total number of data rows in the CSV (excluding header) |
+| `parsedRows` | integer | Number of rows successfully parsed |
+| `skippedRows` | integer | Number of rows skipped due to errors |
+| `errors` | string[] | Fatal validation errors (empty if valid) |
+| `warnings` | string[] | Non-fatal validation warnings |
+| `missingFields` | string[] | Report of missing/extra columns |
+| `preview` | object[] | First 5 parsed rows |
+| `dryRun` | boolean | Whether this was a dry-run validation |
+| `saved` | boolean | Whether the data was persisted |
+| `importId` | string | Unique import ID (only when saved) |
+| `importedAt` | string | ISO 8601 timestamp |
+
+### Warnings (Non-Fatal)
+
+Warnings indicate data quality issues that do not prevent import:
+- Empty values in required fields
+- Duplicate rows detected
+- Extra columns in CSV (ignored)
+
+### Errors (Fatal)
+
+Errors indicate problems that prevent parsing:
+- Missing required columns
+- Invalid data types (e.g., non-numeric in integer field)
+- Malformed CSV structure
+
+### Missing Fields Report
+
+The `missingFields` array reports column mismatches:
+- Columns expected by the schema but missing from the CSV
+- Extra columns in the CSV that will be ignored
+
+### Example Response with Warnings
+
+```json
+{
+  "importType": "lineup",
+  "totalRows": 3,
+  "parsedRows": 1,
+  "skippedRows": 2,
+  "errors": [
+    "Row 2: Invalid integer for shirt_number: 'abc'",
+    "Row 3: Cannot parse 'maybe' as boolean"
+  ],
+  "warnings": [
+    "Row 2: Empty value for required field 'position'"
+  ],
+  "missingFields": [
+    "Extra columns in CSV (ignored): nickname, age"
+  ],
+  "preview": [...],
+  "dryRun": false,
+  "saved": false,
+  "importedAt": "2026-05-07T12:00:00+00:00"
+}
+```
+
+---
+
+## Edge Cases
+
+### BOM (Byte Order Mark)
+
+The import system automatically strips UTF-8 BOM characters (`﻿`) from the beginning of CSV files. No manual intervention is needed.
+
+### Mixed Line Endings
+
+Files with mixed line endings (`\r\n`, `\r`, `\n`) are automatically normalized to `\n` before parsing.
+
+### Quoted Fields
+
+Standard CSV quoting rules apply. Fields containing commas, newlines, or double quotes must be enclosed in double quotes:
+
+```csv
+team_name,player_name,position
+"Arsenal","Bukayo, Jr.","MID"
+```
+
+---
+
+## Example CSV Files
+
+Example CSV files with correct formatting are available in the `examples/csv/` directory:
+
+- `examples/csv/lineup.csv` - Lineup template with 2 example rows
+- `examples/csv/player_stats.csv` - Player stats template with 2 example rows
+- `examples/csv/match_history.csv` - Match history template with 2 example rows
+
+These files can be used directly for testing or as starting points for creating your own data.

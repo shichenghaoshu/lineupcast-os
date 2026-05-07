@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="32" fill="#0f172a"/>
+  <g transform="translate(96,80)">
+    <circle r="36" fill="none" stroke="#38bdf8" stroke-width="4"/>
+    <polygon points="0,-24 22.5,12 -22.5,12" fill="none" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="-12" y1="-21" x2="12" y2="-21" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="-18" y1="-6" x2="-30" y2="-15" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="18" y1="-6" x2="30" y2="-15" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="0" y1="24" x2="0" y2="36" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="-16" y1="18" x2="-26" y2="30" stroke="#38bdf8" stroke-width="3"/>
+    <line x1="16" y1="18" x2="26" y2="30" stroke="#38bdf8" stroke-width="3"/>
+  </g>
+  <text x="96" y="140" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="28" fill="#f8fafc">LC</text>
+</svg>

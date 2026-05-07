@@ -55,19 +55,58 @@ function round(value: number, places = 4): number {
   return Math.round(value * factor) / factor;
 }
 
+/** Safe fallback for missing numeric inputs. */
+const SAFE_DEFAULT = 0;
+
+function safeValue(value: number | undefined, fallback: number = SAFE_DEFAULT): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return value;
+}
+
 export function predictCardRisk(input: CardRiskInput): CardRiskPrediction {
-  const yellowCards = clamp(input.yellowCardsPer90 / 0.5, 0, 1);
-  const fouls = clamp(input.foulsPer90 / 4, 0, 1);
+  // Guard against missing/invalid inputs with graceful defaults
+  const safeYellowCards = safeValue(input.yellowCardsPer90, 0.1);
+  const safeFouls = safeValue(input.foulsPer90, 1.0);
+  const safeDribbles = safeValue(input.opponentDribblesPer90, 10);
+  const safeReferee = safeValue(input.refereeCardsPerMatch, 3.5);
+  const safePressure = safeValue(input.matchPressure, 0.5);
+  const safeMinutes = safeValue(input.minutesExpected, 90);
+
+  const yellowCards = clamp(safeYellowCards / 0.5, 0, 1);
+  const fouls = clamp(safeFouls / 4, 0, 1);
   const position = positionRisk(input.position);
-  const dribbles = clamp(input.opponentDribblesPer90 / 18, 0, 1);
-  const referee = clamp(input.refereeCardsPerMatch / 5, 0, 1);
-  const pressure = clamp(input.matchPressure, 0, 1);
-  const minutes = clamp(input.minutesExpected, 0, 90) / 90;
+  const dribbles = clamp(safeDribbles / 18, 0, 1);
+  const referee = clamp(safeReferee / 5, 0, 1);
+  const pressure = clamp(safePressure, 0, 1);
+  const minutes = clamp(safeMinutes, 0, 90) / 90;
+
+  // Track how many features had real (non-default) data for confidence scoring
+  let dataPointsAvailable = 0;
+  if (input.yellowCardsPer90 !== undefined && Number.isFinite(input.yellowCardsPer90)) dataPointsAvailable++;
+  if (input.foulsPer90 !== undefined && Number.isFinite(input.foulsPer90)) dataPointsAvailable++;
+  if (input.opponentDribblesPer90 !== undefined && Number.isFinite(input.opponentDribblesPer90)) dataPointsAvailable++;
+  if (input.refereeCardsPerMatch !== undefined && Number.isFinite(input.refereeCardsPerMatch)) dataPointsAvailable++;
+  if (input.matchPressure !== undefined && Number.isFinite(input.matchPressure)) dataPointsAvailable++;
+  if (input.minutesExpected !== undefined && Number.isFinite(input.minutesExpected)) dataPointsAvailable++;
+
   const baseRisk = yellowCards * 0.26 + fouls * 0.24 + position * 0.14 + dribbles * 0.14 + referee * 0.16 + pressure * 0.06;
   const riskScore = baseRisk * minutes;
   const yellowCardProbability = clamp(1 / (1 + Math.exp(-7 * (riskScore - 0.34))), 0, 1) * 100;
+
+  // Red card risk is ALWAYS categorical — never numeric
   const redCardRisk: RedCardRisk = riskScore >= 0.68 ? "high" : riskScore >= 0.42 ? "medium" : "low";
-  const confidence: Confidence = minutes < 0.5 ? "low" : riskScore > 0.55 ? "high" : riskScore > 0.35 ? "medium" : "low";
+
+  // Confidence is based on data availability and expected minutes
+  let confidence: Confidence;
+  if (minutes < 0.5) {
+    confidence = "low";
+  } else if (dataPointsAvailable >= 5 && riskScore > 0.35) {
+    confidence = "high";
+  } else if (dataPointsAvailable >= 3) {
+    confidence = "medium";
+  } else {
+    confidence = "low";
+  }
 
   return {
     modelName: "xb-inspired-card-risk",

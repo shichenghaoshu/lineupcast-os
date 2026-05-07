@@ -23,6 +23,15 @@ export interface DixonColesHistoryInput {
   maxGoals?: number;
 }
 
+/** Degradation flags indicating which inputs were missing or imputed. */
+export interface DegradationFlags {
+  lowSampleSize: boolean;
+  missingTeamHistory: boolean;
+  extremeStrengthClamped: boolean;
+  defaultRhoUsed: boolean;
+  defaultHomeAdvantageUsed: boolean;
+}
+
 export interface DixonColesPrediction {
   modelName: "dixon-coles";
   modelVersion: "2.0.0";
@@ -37,6 +46,7 @@ export interface DixonColesPrediction {
     awayAttackStrength: number;
     awayDefenceWeakness: number;
     rho: number;
+    degradationFlags: DegradationFlags;
   };
   confidence: Confidence;
   expectedHomeGoals: number;
@@ -105,12 +115,30 @@ function estimateTeamRates(teamId: string, matches: MatchHistoryRecord[], weight
   };
 }
 
+/** Clamp a number to [min, max]. */
+function clampValue(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/** Maximum allowed strength multiplier to prevent runaway predictions. */
+const MAX_STRENGTH = 3.0;
+const MIN_STRENGTH = 0.15;
+
 export function predictDixonColesFromHistory(input: DixonColesHistoryInput): DixonColesPrediction {
   const asOf = toDate(input.asOfDate ?? new Date());
   const halfLifeDays = input.halfLifeDays ?? 180;
-  const rho = input.rho ?? -0.1;
-  const homeAdvantage = input.homeAdvantage ?? 1.1;
+  const rho = clampValue(input.rho ?? -0.1, -0.5, 0.5);
+  const homeAdvantage = clampValue(input.homeAdvantage ?? 1.1, 0.8, 1.8);
   const maxGoals = input.maxGoals ?? 10;
+
+  const degradationFlags: DegradationFlags = {
+    lowSampleSize: false,
+    missingTeamHistory: false,
+    extremeStrengthClamped: false,
+    defaultRhoUsed: input.rho === undefined,
+    defaultHomeAdvantageUsed: input.homeAdvantage === undefined,
+  };
+
   const usableMatches = input.matchHistory
     .filter((match) => toDate(match.date).getTime() <= asOf.getTime())
     .sort((left, right) => toDate(left.date).getTime() - toDate(right.date).getTime());
@@ -120,12 +148,31 @@ export function predictDixonColesFromHistory(input: DixonColesHistoryInput): Dix
   const weights = usableMatches.map((match) => timeDecayWeight(match.date, { asOfDate: asOf, halfLifeDays }));
   const weightedGoals = usableMatches.reduce((sum, match, index) => sum + (match.homeGoals + match.awayGoals) * (weights[index] ?? 0), 0);
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-  const leagueAverageGoals = Math.max(0.2, weightedGoals / Math.max(1, totalWeight * 2));
+  const leagueAverageGoals = clampValue(weightedGoals / Math.max(1, totalWeight * 2), 0.2, 5.0);
+
   const homeRates = estimateTeamRates(input.homeTeamId, usableMatches, weights, leagueAverageGoals);
   const awayRates = estimateTeamRates(input.awayTeamId, usableMatches, weights, leagueAverageGoals);
 
-  const expectedHomeGoals = Math.max(0.05, leagueAverageGoals * homeRates.attack * awayRates.defenceWeakness * homeAdvantage);
-  const expectedAwayGoals = Math.max(0.05, leagueAverageGoals * awayRates.attack * homeRates.defenceWeakness);
+  // Flag missing team history when weighted match count is very low
+  const homeMatches = homeRates.weightedMatches;
+  const awayMatches = awayRates.weightedMatches;
+  if (homeMatches < 1) degradationFlags.missingTeamHistory = true;
+  if (awayMatches < 1) degradationFlags.missingTeamHistory = true;
+
+  // Clamp attack/defence strengths to prevent extreme predictions
+  const clampedHomeAttack = clampValue(homeRates.attack, MIN_STRENGTH, MAX_STRENGTH);
+  const clampedHomeDefence = clampValue(homeRates.defenceWeakness, MIN_STRENGTH, MAX_STRENGTH);
+  const clampedAwayAttack = clampValue(awayRates.attack, MIN_STRENGTH, MAX_STRENGTH);
+  const clampedAwayDefence = clampValue(awayRates.defenceWeakness, MIN_STRENGTH, MAX_STRENGTH);
+  if (
+    clampedHomeAttack !== homeRates.attack || clampedHomeDefence !== homeRates.defenceWeakness ||
+    clampedAwayAttack !== awayRates.attack || clampedAwayDefence !== awayRates.defenceWeakness
+  ) {
+    degradationFlags.extremeStrengthClamped = true;
+  }
+
+  const expectedHomeGoals = clampValue(leagueAverageGoals * clampedHomeAttack * clampedAwayDefence * homeAdvantage, 0.05, 8.0);
+  const expectedAwayGoals = clampValue(leagueAverageGoals * clampedAwayAttack * clampedHomeDefence, 0.05, 8.0);
 
   const rawScores: PoissonScoreProbability[] = [];
   for (let homeGoals = 0; homeGoals <= maxGoals; homeGoals += 1) {
@@ -140,7 +187,12 @@ export function predictDixonColesFromHistory(input: DixonColesHistoryInput): Dix
   }
 
   const scoreTotal = rawScores.reduce((sum, score) => sum + score.probability, 0);
-  const scoreMatrix = rawScores.map((score) => ({ ...score, probability: (score.probability / scoreTotal) * 100 }));
+
+  // Guard against degenerate score matrix (all zeros)
+  const scoreMatrix = scoreTotal > 0
+    ? rawScores.map((score) => ({ ...score, probability: round((score.probability / scoreTotal) * 100, 4) }))
+    : rawScores.map((score) => ({ ...score, probability: 0 }));
+
   const outcomeTotals = scoreMatrix.reduce(
     (totals, score) => {
       if (score.homeGoals > score.awayGoals) totals.homeWin += score.probability;
@@ -151,9 +203,32 @@ export function predictDixonColesFromHistory(input: DixonColesHistoryInput): Dix
     { homeWin: 0, draw: 0, awayWin: 0 },
   );
   const outcomes = normalizeOutcomes(outcomeTotals.homeWin, outcomeTotals.draw, outcomeTotals.awayWin);
-  const strongest = Math.max(outcomes.homeWin, outcomes.draw, outcomes.awayWin);
+
+  // Verify normalization: probabilities must sum to ~100% (within 0.5%)
+  const outcomeSum = outcomes.homeWin + outcomes.draw + outcomes.awayWin;
+  if (Math.abs(outcomeSum - 100) > 0.5) {
+    // Force re-normalization if drift detected
+    const correction = normalizeOutcomes(outcomes.homeWin, outcomes.draw, outcomes.awayWin);
+    outcomes.homeWin = correction.homeWin;
+    outcomes.draw = correction.draw;
+    outcomes.awayWin = correction.awayWin;
+  }
+
   const sample = Math.min(homeRates.weightedMatches, awayRates.weightedMatches);
-  const confidence: Confidence = sample < 2 ? "low" : strongest > 58 ? "high" : strongest > 45 ? "medium" : "low";
+  if (sample < 3) degradationFlags.lowSampleSize = true;
+
+  // Confidence degrades with low sample size and missing data
+  const strongest = Math.max(outcomes.homeWin, outcomes.draw, outcomes.awayWin);
+  let confidence: Confidence;
+  if (sample < 2 || degradationFlags.missingTeamHistory) {
+    confidence = "low";
+  } else if (strongest > 58 && sample >= 5) {
+    confidence = "high";
+  } else if (strongest > 45 && sample >= 3) {
+    confidence = "medium";
+  } else {
+    confidence = "low";
+  }
 
   return {
     modelName: "dixon-coles",
@@ -167,11 +242,12 @@ export function predictDixonColesFromHistory(input: DixonColesHistoryInput): Dix
       matchesUsed: usableMatches.length,
       halfLifeDays,
       leagueAverageGoals: round(leagueAverageGoals),
-      homeAttackStrength: round(homeRates.attack),
-      homeDefenceWeakness: round(homeRates.defenceWeakness),
-      awayAttackStrength: round(awayRates.attack),
-      awayDefenceWeakness: round(awayRates.defenceWeakness),
+      homeAttackStrength: round(clampedHomeAttack),
+      homeDefenceWeakness: round(clampedHomeDefence),
+      awayAttackStrength: round(clampedAwayAttack),
+      awayDefenceWeakness: round(clampedAwayDefence),
       rho,
+      degradationFlags,
     },
     confidence,
     expectedHomeGoals: round(expectedHomeGoals),

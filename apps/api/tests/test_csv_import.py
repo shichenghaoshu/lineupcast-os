@@ -12,16 +12,25 @@ import time
 import pytest
 
 from app.csv_import_service import (
+    COLUMN_SCHEMAS,
     CsvValidationError,
+    ImportResult,
     LineupRow,
     MatchHistoryRow,
     PlayerStatsRow,
+    _collect_warnings,
+    _dataclass_to_dict,
+    _detect_missing_fields,
+    _normalize_line_endings,
     _parse_bool,
     _read_csv,
     _strip_bom,
     _to_float,
     _to_int,
     _validate_headers,
+    generate_csv_template,
+    get_template_info,
+    parse_csv,
     parse_lineup_csv,
     parse_match_history_csv,
     parse_player_stats_csv,
@@ -641,3 +650,431 @@ class TestReadCsvHelper:
         content = "\ufeffa,b\n1,2\n"
         headers, rows = _read_csv(content)
         assert headers == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Dry-run mode
+# ---------------------------------------------------------------------------
+
+
+class TestDryRunMode:
+    def test_dry_run_returns_import_result(self):
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        assert isinstance(result, ImportResult)
+        assert result.import_type == "lineup"
+        assert result.total_rows == 3
+        assert result.parsed_rows == 3
+        assert result.skipped_rows == 0
+        assert result.errors == []
+        assert result.dry_run is False
+
+    def test_all_rows_populated(self):
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        assert len(result.all_rows) == 3
+        assert result.all_rows[0]["player_name"] == "Bukayo Saka"
+
+    def test_all_rows_not_in_to_dict(self):
+        """all_rows should not appear in the serialized response (it's for internal use)."""
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        d = result.to_dict()
+        assert "allRows" not in d
+        assert "all_rows" not in d
+
+    def test_dry_run_flag_on_result(self):
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        result.dry_run = True
+        assert result.dry_run is True
+        out = result.to_dict()
+        assert out["dryRun"] is True
+
+    def test_dry_run_does_not_persist(self):
+        """Dry run should not write any files."""
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        result.dry_run = True
+        out = result.to_dict()
+        assert out["saved"] is False
+        assert "importId" not in out
+
+    def test_dry_run_with_errors(self):
+        csv_content = """\
+team_name,player_name,position,shirt_number,is_starter,x,y
+Arsenal,Saka,RW,abc,true,75.0,25.0
+"""
+        result = parse_csv(csv_content, "lineup")
+        assert len(result.errors) > 0
+        assert result.parsed_rows == 0
+        assert result.skipped_rows == 1
+
+    def test_dry_run_player_stats(self):
+        result = parse_csv(VALID_PLAYER_STATS_CSV, "player_stats")
+        assert result.import_type == "player_stats"
+        assert result.parsed_rows == 2
+        assert result.total_rows == 2
+
+    def test_dry_run_match_history(self):
+        result = parse_csv(VALID_MATCH_HISTORY_CSV, "match_history")
+        assert result.import_type == "match_history"
+        assert result.parsed_rows == 2
+        assert result.total_rows == 2
+
+    def test_dry_run_unknown_type_raises(self):
+        with pytest.raises(ValueError, match="Unknown import type"):
+            parse_csv(VALID_LINEUP_CSV, "unknown_type")
+
+    def test_dry_run_preview_limited_to_5(self):
+        csv_content = "team_name,player_name,position,shirt_number,is_starter,x,y\n"
+        for i in range(10):
+            csv_content += f"Team,Player{i},FWD,{i},true,50.0,50.0\n"
+        result = parse_csv(csv_content, "lineup")
+        assert len(result.preview) == 5
+        assert result.total_rows == 10
+        assert result.parsed_rows == 10
+
+
+# ---------------------------------------------------------------------------
+# Validation warnings
+# ---------------------------------------------------------------------------
+
+
+class TestValidationWarnings:
+    def test_empty_required_field_produces_warning(self):
+        csv_content = """\
+team_name,player_name,position,shirt_number,is_starter,x,y
+Arsenal,,RW,7,true,75.0,25.0
+"""
+        result = parse_csv(csv_content, "lineup")
+        assert any("Empty value" in w for w in result.warnings)
+        assert any("player_name" in w for w in result.warnings)
+
+    def test_duplicate_row_produces_warning(self):
+        csv_content = """\
+team_name,player_name,position,shirt_number,is_starter,x,y
+Arsenal,Saka,RW,7,true,75.0,25.0
+Arsenal,Saka,RW,7,true,75.0,25.0
+"""
+        result = parse_csv(csv_content, "lineup")
+        assert any("Duplicate row" in w for w in result.warnings)
+
+    def test_no_warnings_for_clean_data(self):
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        assert result.warnings == []
+
+    def test_warnings_do_not_prevent_parsing(self):
+        """Warnings should not cause parsing to fail."""
+        csv_content = """\
+team_name,player_name,position,shirt_number,is_starter,x,y
+Arsenal,,RW,7,true,75.0,25.0
+"""
+        result = parse_csv(csv_content, "lineup")
+        # Warnings present but no errors
+        assert len(result.warnings) > 0
+        assert result.errors == []
+        assert result.parsed_rows == 1
+
+
+# ---------------------------------------------------------------------------
+# Missing field detection
+# ---------------------------------------------------------------------------
+
+
+class TestMissingFieldDetection:
+    def test_extra_columns_detected(self):
+        csv_content = """\
+team_name,player_name,position,shirt_number,is_starter,x,y,coach,notes
+Arsenal,Saka,RW,7,true,75.0,25.0,Arteta,captain
+"""
+        result = parse_csv(csv_content, "lineup")
+        assert any("Extra columns" in f for f in result.missing_fields)
+        assert any("coach" in f for f in result.missing_fields)
+        assert any("notes" in f for f in result.missing_fields)
+
+    def test_no_missing_fields_for_valid_csv(self):
+        result = parse_csv(VALID_LINEUP_CSV, "lineup")
+        assert result.missing_fields == []
+
+    def test_detect_missing_fields_helper(self):
+        actual = ["team_name", "player_name", "extra_col"]
+        schema = COLUMN_SCHEMAS["lineup"]
+        report = _detect_missing_fields(actual, schema)
+        assert any("Extra columns" in r for r in report)
+        assert any("extra_col" in r for r in report)
+
+
+# ---------------------------------------------------------------------------
+# Template generation
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateGeneration:
+    def test_lineup_template_has_headers(self):
+        template = generate_csv_template("lineup")
+        lines = template.strip().split("\n")
+        assert lines[0] == "team_name,player_name,position,shirt_number,is_starter,x,y"
+
+    def test_lineup_template_has_two_rows(self):
+        template = generate_csv_template("lineup")
+        lines = template.strip().split("\n")
+        assert len(lines) == 3  # header + 2 data rows
+
+    def test_player_stats_template_has_headers(self):
+        template = generate_csv_template("player_stats")
+        lines = template.strip().split("\n")
+        assert "player_name" in lines[0]
+        assert "rating" in lines[0]
+
+    def test_match_history_template_has_headers(self):
+        template = generate_csv_template("match_history")
+        lines = template.strip().split("\n")
+        assert "date" in lines[0]
+        assert "competition" in lines[0]
+
+    def test_unknown_type_raises(self):
+        with pytest.raises(ValueError, match="Unknown import type"):
+            generate_csv_template("unknown")
+
+    def test_template_is_parseable(self):
+        """Generated templates should be parseable without errors."""
+        for import_type in ("lineup", "player_stats", "match_history"):
+            template = generate_csv_template(import_type)
+            result = parse_csv(template, import_type)
+            assert result.errors == [], f"Template for {import_type} has errors: {result.errors}"
+            assert result.parsed_rows == 2
+
+    def test_template_info_returns_all_types(self):
+        info = get_template_info()
+        assert "lineup" in info
+        assert "player_stats" in info
+        assert "match_history" in info
+
+    def test_template_info_has_columns(self):
+        info = get_template_info()
+        assert len(info["lineup"]["columns"]) == 7
+        assert len(info["player_stats"]["columns"]) == 12
+        assert len(info["match_history"]["columns"]) == 7
+
+    def test_template_info_has_required_and_optional(self):
+        info = get_template_info()
+        # match_history has 1 optional field (venue)
+        assert "venue" in info["match_history"]["optional_columns"]
+        assert len(info["match_history"]["required_columns"]) == 6
+
+
+# ---------------------------------------------------------------------------
+# ImportResult dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestImportResult:
+    def test_to_dict_basic(self):
+        result = ImportResult(
+            import_type="lineup",
+            total_rows=10,
+            parsed_rows=8,
+            skipped_rows=2,
+            errors=["err1"],
+            warnings=["warn1"],
+            missing_fields=["field1"],
+            preview=[{"a": 1}],
+            dry_run=False,
+            saved=True,
+            import_id="imp_123",
+        )
+        d = result.to_dict()
+        assert d["importType"] == "lineup"
+        assert d["totalRows"] == 10
+        assert d["parsedRows"] == 8
+        assert d["skippedRows"] == 2
+        assert d["errors"] == ["err1"]
+        assert d["warnings"] == ["warn1"]
+        assert d["missingFields"] == ["field1"]
+        assert d["preview"] == [{"a": 1}]
+        assert d["dryRun"] is False
+        assert d["saved"] is True
+        assert d["importId"] == "imp_123"
+
+    def test_to_dict_no_import_id_when_none(self):
+        result = ImportResult(
+            import_type="lineup",
+            total_rows=0,
+            parsed_rows=0,
+            skipped_rows=0,
+        )
+        d = result.to_dict()
+        assert "importId" not in d
+
+    def test_to_dict_dry_run(self):
+        result = ImportResult(
+            import_type="lineup",
+            total_rows=5,
+            parsed_rows=5,
+            skipped_rows=0,
+            dry_run=True,
+        )
+        d = result.to_dict()
+        assert d["dryRun"] is True
+        assert d["saved"] is False
+
+
+# ---------------------------------------------------------------------------
+# Dataclass to dict helper
+# ---------------------------------------------------------------------------
+
+
+class TestDataclassToDict:
+    def test_lineup_row_to_dict(self):
+        row = LineupRow(
+            team_name="Arsenal",
+            player_name="Saka",
+            position="RW",
+            shirt_number=7,
+            is_starter=True,
+            x=75.0,
+            y=25.0,
+        )
+        d = _dataclass_to_dict(row)
+        assert d["team_name"] == "Arsenal"
+        assert d["shirt_number"] == 7
+        assert d["is_starter"] is True
+
+    def test_non_dataclass_returns_empty(self):
+        assert _dataclass_to_dict("not a dataclass") == {}
+        assert _dataclass_to_dict(42) == {}
+
+
+# ---------------------------------------------------------------------------
+# Normalize line endings helper
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeLineEndings:
+    def test_crlf_to_lf(self):
+        assert _normalize_line_endings("a\r\nb") == "a\nb"
+
+    def test_cr_to_lf(self):
+        assert _normalize_line_endings("a\rb") == "a\nb"
+
+    def test_mixed_endings(self):
+        assert _normalize_line_endings("a\r\nb\rc\nd") == "a\nb\nc\nd"
+
+    def test_no_change_for_lf(self):
+        assert _normalize_line_endings("a\nb") == "a\nb"
+
+
+# ---------------------------------------------------------------------------
+# Collect warnings helper
+# ---------------------------------------------------------------------------
+
+
+class TestCollectWarningsHelper:
+    def test_empty_required_field(self):
+        rows = [{"team_name": "Arsenal", "player_name": ""}]
+        schema = COLUMN_SCHEMAS["lineup"]
+        warnings = _collect_warnings(rows, schema, "lineup")
+        assert any("player_name" in w for w in warnings)
+
+    def test_no_warnings_for_valid_data(self):
+        rows = [{"team_name": "Arsenal", "player_name": "Saka", "position": "RW",
+                  "shirt_number": "7", "is_starter": "true", "x": "75.0", "y": "25.0"}]
+        schema = COLUMN_SCHEMAS["lineup"]
+        warnings = _collect_warnings(rows, schema, "lineup")
+        assert warnings == []
+
+    def test_duplicate_detection(self):
+        rows = [
+            {"team_name": "Arsenal", "player_name": "Saka", "position": "RW",
+             "shirt_number": "7", "is_starter": "true", "x": "75.0", "y": "25.0"},
+            {"team_name": "Arsenal", "player_name": "Saka", "position": "RW",
+             "shirt_number": "7", "is_starter": "true", "x": "75.0", "y": "25.0"},
+        ]
+        schema = COLUMN_SCHEMAS["lineup"]
+        warnings = _collect_warnings(rows, schema, "lineup")
+        assert any("Duplicate" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: BOM with parse_csv
+# ---------------------------------------------------------------------------
+
+
+class TestBomWithParseCsv:
+    def test_bom_lineup(self):
+        content = "\ufeff" + VALID_LINEUP_CSV
+        result = parse_csv(content, "lineup")
+        assert result.errors == []
+        assert result.parsed_rows == 3
+
+    def test_bom_player_stats(self):
+        content = "\ufeff" + VALID_PLAYER_STATS_CSV
+        result = parse_csv(content, "player_stats")
+        assert result.errors == []
+        assert result.parsed_rows == 2
+
+    def test_bom_match_history(self):
+        content = "\ufeff" + VALID_MATCH_HISTORY_CSV
+        result = parse_csv(content, "match_history")
+        assert result.errors == []
+        assert result.parsed_rows == 2
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: mixed line endings with parse_csv
+# ---------------------------------------------------------------------------
+
+
+class TestMixedLineEndingsWithParseCsv:
+    def test_crlf_lineup(self):
+        csv_content = VALID_LINEUP_CSV.replace("\n", "\r\n")
+        result = parse_csv(csv_content, "lineup")
+        assert result.errors == []
+        assert result.parsed_rows == 3
+
+    def test_mixed_endings_match_history(self):
+        csv_content = (
+            "date,home_team,away_team,home_score,away_score,competition,venue\r\n"
+            "2026-04-20,Arsenal,Chelsea,2,1,Premier League,Emirates Stadium\n"
+            "2026-04-13,Chelsea,Arsenal,0,0,Premier League,Stamford Bridge\r\n"
+        )
+        result = parse_csv(csv_content, "match_history")
+        assert result.errors == []
+        assert result.parsed_rows == 2
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: quoted fields with parse_csv
+# ---------------------------------------------------------------------------
+
+
+class TestQuotedFieldsWithParseCsv:
+    def test_quoted_commas(self):
+        csv_content = (
+            "date,home_team,away_team,home_score,away_score,competition,venue\n"
+            '"2026-04-20","Red, United","Blue City",2,1,"Premier League","Old, Trafford"\n'
+        )
+        result = parse_csv(csv_content, "match_history")
+        assert result.errors == []
+        assert result.parsed_rows == 1
+        assert result.preview[0]["home_team"] == "Red, United"
+
+
+# ---------------------------------------------------------------------------
+# Column schemas
+# ---------------------------------------------------------------------------
+
+
+class TestColumnSchemas:
+    def test_all_schemas_exist(self):
+        assert "lineup" in COLUMN_SCHEMAS
+        assert "player_stats" in COLUMN_SCHEMAS
+        assert "match_history" in COLUMN_SCHEMAS
+
+    def test_lineup_schema_has_required_fields(self):
+        schema = COLUMN_SCHEMAS["lineup"]
+        required = [c["name"] for c in schema if c["required"]]
+        assert "team_name" in required
+        assert "player_name" in required
+        assert "position" in required
+
+    def test_match_history_has_optional_venue(self):
+        schema = COLUMN_SCHEMAS["match_history"]
+        venue_col = next(c for c in schema if c["name"] == "venue")
+        assert venue_col["required"] is False

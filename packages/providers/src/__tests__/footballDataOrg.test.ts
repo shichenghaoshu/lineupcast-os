@@ -277,12 +277,12 @@ describe("FootballDataOrgProvider (standalone)", () => {
       expect(provider.getHealth().status).toBe("degraded");
     });
 
-    it("returns degraded on network error", async () => {
+    it("returns offline on network error", async () => {
       const provider = new FootballDataOrgProvider({ apiKey: "key" });
       vi.stubGlobal("fetch", mockFetchNetworkError());
 
       await provider.getFixtures("premier-league");
-      expect(provider.getHealth().status).toBe("degraded");
+      expect(provider.getHealth().status).toBe("offline");
     });
 
     it("recovers to healthy after a successful call following a failure", async () => {
@@ -558,13 +558,14 @@ describe("FootballDataOrgProvider (standalone)", () => {
       expect(matches[0]!.id).toMatch(/^fdm-/);
     });
 
-    it("fetchMatch throws on missing match (not returns null)", async () => {
+    it("fetchMatch returns placeholder match when not found (never throws)", async () => {
       const provider = new FootballDataOrgProvider({ apiKey: "key" });
       vi.stubGlobal("fetch", mockFetchStatus(404, "Not Found"));
 
-      await expect(provider.fetchMatch("fdm-99999")).rejects.toThrow(
-        /\[football-data-org-v2\]/,
-      );
+      const result = await provider.fetchMatch("fdm-99999");
+      expect(result).toBeDefined();
+      expect(result.id).toBe("fdm-99999");
+      expect(result.homeTeam.name).toBe("Unknown");
     });
 
     it("fetchTeam returns a Team object", async () => {
@@ -640,7 +641,7 @@ describe("FootballDataOrgProvider (standalone)", () => {
 
       const result = await provider.fetchUpcomingMatches("premier-league");
       expect(result).toEqual([]);
-      expect(provider.getHealth().status).toBe("degraded");
+      expect(provider.getHealth().status).toBe("offline");
     });
 
     it("fetchSquad returns empty array on failure instead of throwing", async () => {
@@ -740,6 +741,7 @@ describe("FootballDataOrgProvider (standalone)", () => {
       expect(caps.squad).toBe(true);
       expect(caps.form).toBe(true);
       expect(caps.h2h).toBe(true);
+      expect(caps.lineup).toBe(true);
     });
   });
 });

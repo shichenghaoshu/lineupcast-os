@@ -5,7 +5,41 @@ export type LlmProviderType =
   | "huggingface-inference-endpoint"
   | "huggingface-inference-provider"
   | "openai-compatible"
+  | "openai"
+  | "ollama"
+  | "vllm"
+  | "lmstudio"
   | "mock";
+
+/** All supported provider types as a readonly array for runtime iteration. */
+export const LLM_PROVIDER_TYPES: readonly LlmProviderType[] = [
+  "local-transformers",
+  "huggingface-inference-endpoint",
+  "huggingface-inference-provider",
+  "openai-compatible",
+  "openai",
+  "ollama",
+  "vllm",
+  "lmstudio",
+  "mock",
+] as const;
+
+/** Health / status snapshot for a single provider. */
+export interface LlmProviderStatus {
+  provider: LlmProviderType;
+  available: boolean;
+  lastLatencyMs?: number;
+  lastError?: string;
+  lastTestedAt?: Date;
+}
+
+/** Configuration for automatic fallback between providers. */
+export interface FallbackConfig {
+  /** Ordered list of providers to try. First success wins. */
+  chain: LlmProviderType[];
+  /** If true, always end with mock as a last resort. Default true. */
+  includeMockFallback?: boolean;
+}
 
 export interface TokenUsage {
   promptTokens?: number;
@@ -52,4 +86,12 @@ export interface HfClientOptions {
   endpointUrl?: string;
   openAiCompatibleBaseUrl?: string;
   apiKey?: string;
+  /** Ollama base URL (default http://localhost:11434). */
+  ollamaBaseUrl?: string;
+  /** vLLM base URL. */
+  vllmBaseUrl?: string;
+  /** LM Studio base URL (default http://localhost:1234/v1). */
+  lmstudioBaseUrl?: string;
+  /** Explicit fallback chain configuration. */
+  fallback?: FallbackConfig;
 }

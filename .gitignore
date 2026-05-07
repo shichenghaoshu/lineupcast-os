@@ -16,3 +16,4 @@ venv/
 coverage/
 .DS_Store
 *.log
+.claude/worktrees/

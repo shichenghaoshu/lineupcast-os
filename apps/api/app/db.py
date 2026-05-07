@@ -20,7 +20,7 @@ from uuid import uuid4
 # Schema version & migrations
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -105,6 +105,20 @@ MIGRATIONS: dict[int, str] = {
         version     INTEGER PRIMARY KEY,
         applied_at  TEXT NOT NULL
     );
+    """,
+    2: """
+    CREATE TABLE IF NOT EXISTS overlay_exports (
+        export_id   TEXT PRIMARY KEY,
+        match_id    TEXT NOT NULL,
+        scene_type  TEXT NOT NULL,
+        format      TEXT NOT NULL,
+        url         TEXT,
+        exported_at TEXT NOT NULL,
+        FOREIGN KEY (match_id) REFERENCES matches(match_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_overlay_exports_match_id ON overlay_exports(match_id);
+    CREATE INDEX IF NOT EXISTS idx_overlay_exports_exported_at ON overlay_exports(exported_at);
     """,
 }
 
@@ -583,6 +597,95 @@ class Database:
                 params,
             )
             return True
+
+    # ------------------------------------------------------------------
+    # Scripts helper: list across all matches
+    # ------------------------------------------------------------------
+
+    def list_all_scripts(self, limit: int = 500) -> list[dict]:
+        """List scripts across all matches, ordered by most recent first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM scripts ORDER BY generated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [self._row_to_script(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Overlay exports CRUD
+    # ------------------------------------------------------------------
+
+    def save_overlay_export(
+        self,
+        match_id: str,
+        scene_type: str,
+        format: str = "svg",
+        url: str | None = None,
+    ) -> dict:
+        export_id = f"exp_{uuid4().hex[:12]}"
+        now = _now_iso()
+        record = {
+            "exportId": export_id,
+            "matchId": match_id,
+            "sceneType": scene_type,
+            "format": format,
+            "url": url,
+            "exportedAt": now,
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO overlay_exports (
+                    export_id, match_id, scene_type, format, url, exported_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (export_id, match_id, scene_type, format, url, now),
+            )
+        return record
+
+    def get_overlay_export(self, export_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM overlay_exports WHERE export_id = ?",
+                (export_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "exportId": row["export_id"],
+                "matchId": row["match_id"],
+                "sceneType": row["scene_type"],
+                "format": row["format"],
+                "url": row["url"],
+                "exportedAt": row["exported_at"],
+            }
+
+    def list_overlay_exports(
+        self, match_id: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        with self._connect() as conn:
+            if match_id:
+                rows = conn.execute(
+                    "SELECT * FROM overlay_exports WHERE match_id = ? "
+                    "ORDER BY exported_at DESC LIMIT ?",
+                    (match_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM overlay_exports ORDER BY exported_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [
+                {
+                    "exportId": row["export_id"],
+                    "matchId": row["match_id"],
+                    "sceneType": row["scene_type"],
+                    "format": row["format"],
+                    "url": row["url"],
+                    "exportedAt": row["exported_at"],
+                }
+                for row in rows
+            ]
 
 
 # ---------------------------------------------------------------------------

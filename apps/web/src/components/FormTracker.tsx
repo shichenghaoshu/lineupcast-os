@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import {
   Bar,
   XAxis,
@@ -12,6 +11,7 @@ import {
   Line,
   ComposedChart,
 } from "recharts";
+import { Card } from "@/components/Card";
 import type { FormEntry } from "@/lib/types";
 
 interface FormTrackerProps {
@@ -45,15 +45,9 @@ export function FormTracker({ form, teamName }: FormTrackerProps) {
   const avgXG = rollingXG[rollingXG.length - 1];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.1 }}
-      className="card"
-    >
-      <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-        Form · 近期战绩 · {teamName}
-      </div>
+    <Card>
+      <Card.Header>Form · 近期战绩 · {teamName}</Card.Header>
+      <Card.Body>
 
       {/* W/D/L Badges */}
       <div className="mb-3 flex items-center gap-1.5">
@@ -121,6 +115,7 @@ export function FormTracker({ form, teamName }: FormTrackerProps) {
           </div>
         ))}
       </div>
-    </motion.div>
+    </Card.Body>
+    </Card>
   );
 }

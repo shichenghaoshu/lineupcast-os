@@ -62,12 +62,31 @@ function round(value: number, places = 4): number {
   return Math.round(value * factor) / factor;
 }
 
+/** Maximum probability any single player can have (as a fraction, 0-1). */
+const MAX_SINGLE_PLAYER_PROB = 0.45;
+
+/** Graceful defaults for missing player stats. */
+const DEFAULT_RECENT_XG = 0.15;
+const DEFAULT_SHOTS_PER_90 = 1.5;
+const DEFAULT_EXPECTED_MINUTES = 90;
+
 export function predictTopGoalScorers(input: TopGoalScorerInput): TopGoalScorerPredictionResult {
   const maxResults = input.maxResults ?? 5;
   const rawPlayers = input.players.map((player) => {
-    const minutesFactor = clamp(player.expectedMinutes, 0, 90) / 90;
-    const shotFactor = clamp(player.shotsPer90 / 5, 0, 1);
-    const xgFactor = clamp(player.recentXG / 2, 0, 1);
+    // Gracefully handle missing stats with defaults
+    const safeRecentXG = player.recentXG !== undefined && Number.isFinite(player.recentXG)
+      ? player.recentXG
+      : DEFAULT_RECENT_XG;
+    const safeShotsPer90 = player.shotsPer90 !== undefined && Number.isFinite(player.shotsPer90)
+      ? player.shotsPer90
+      : DEFAULT_SHOTS_PER_90;
+    const safeExpectedMinutes = player.expectedMinutes !== undefined && Number.isFinite(player.expectedMinutes)
+      ? player.expectedMinutes
+      : DEFAULT_EXPECTED_MINUTES;
+
+    const minutesFactor = clamp(safeExpectedMinutes, 0, 90) / 90;
+    const shotFactor = clamp(safeShotsPer90 / 5, 0, 1);
+    const xgFactor = clamp(safeRecentXG / 2, 0, 1);
     const penaltyFactor = player.isPenaltyTaker ? 1 : 0;
     const posFactor = positionFactor(player.position);
     const weightedShare = minutesFactor * (xgFactor * 0.45 + shotFactor * 0.2 + posFactor * 0.25 + penaltyFactor * 0.1);
@@ -89,8 +108,10 @@ export function predictTopGoalScorers(input: TopGoalScorerInput): TopGoalScorerP
   const ranked = rawPlayers
     .map((entry) => {
       const teamShare = shareTotal > 0 ? entry.weightedShare / shareTotal : 1 / Math.max(1, rawPlayers.length);
-      const expectedGoals = teamShare * Math.max(0, input.teamExpectedGoals);
-      const atLeastOne = 1 - Math.exp(-expectedGoals);
+      const safeTeamGoals = clamp(Math.max(0, input.teamExpectedGoals), 0, 10);
+      const expectedGoals = teamShare * safeTeamGoals;
+      // Cap per-player probability at 45%
+      const atLeastOne = Math.min(MAX_SINGLE_PLAYER_PROB, 1 - Math.exp(-expectedGoals));
       return { ...entry, expectedGoals, atLeastOne };
     })
     .sort((left, right) => right.atLeastOne - left.atLeastOne)
@@ -100,7 +121,7 @@ export function predictTopGoalScorers(input: TopGoalScorerInput): TopGoalScorerP
   const predictions = ranked.map((entry) => ({
     playerId: entry.player.playerId,
     playerName: entry.player.playerName,
-    scorerProbability: topTotal > 0 ? (entry.atLeastOne / topTotal) * 100 : 0,
+    scorerProbability: round(topTotal > 0 ? (entry.atLeastOne / topTotal) * 100 : 0, 2),
     expectedGoals: round(entry.expectedGoals),
     evidence: {
       xgShare: round(entry.evidence.xgShare),
@@ -120,10 +141,10 @@ export function predictTopGoalScorers(input: TopGoalScorerInput): TopGoalScorerP
       "StatsBomb expected goals model documentation.",
       "Anzer, G. & Bauer, P. (2021) A Goal Scoring Probability Model for Shots Based on Synchronized Positional and Event Data.",
     ],
-    explanation: "Top scorer probabilities use each player's xG share, expected minutes, shot volume, position, and penalty role, then normalize the top five to percentages.",
+    explanation: "Top scorer probabilities use each player's xG share, expected minutes, shot volume, position, and penalty role, then normalize the top five to percentages. Individual probabilities are capped at 45%.",
     evidence: {
       playersConsidered: input.players.length,
-      teamExpectedGoals: input.teamExpectedGoals,
+      teamExpectedGoals: clamp(Math.max(0, input.teamExpectedGoals), 0, 10),
       returnedPlayers: predictions.length,
     },
     confidence,
