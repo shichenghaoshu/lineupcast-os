@@ -44,7 +44,9 @@ export default function ScriptPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getDemoMatch().then((match) => setMatchId(match.matchId)).catch(() => undefined);
+    getDemoMatch()
+      .then((match) => setMatchId(match.matchId))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -100,19 +102,42 @@ export default function ScriptPage() {
             <StatusRow label="Provider" value={result?.provider ?? "LineupCast API"} />
             <StatusRow label="Model" value={result?.model ?? "pending"} />
             <StatusRow label="Latency" value={result ? `${result.latencyMs}ms` : "-"} />
-            <StatusRow label="Fallback" value={result?.fallback ? "yes" : "no"} tone={result?.fallback ? "warning" : "success"} />
-            {error && <div className="rounded bg-red-500/10 p-2 text-xs text-[var(--accent-red)]">{error}</div>}
+            <StatusRow
+              label="Fallback"
+              value={result?.fallback ? "yes" : "no"}
+              tone={result?.fallback ? "warning" : "success"}
+            />
+            {error && (
+              <div className="rounded bg-red-500/10 p-2 text-xs text-[var(--accent-red)]">
+                {error}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="space-y-4 xl:col-span-9">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <MetaCard icon={<Radio className="h-4 w-4 text-[var(--accent-blue)]" />} label="Style" value={style} />
-            <MetaCard icon={<Timer className="h-4 w-4 text-[var(--accent-amber)]" />} label="Duration" value={duration} />
-            <MetaCard icon={<Globe className="h-4 w-4 text-[var(--accent-green)]" />} label="Language" value={language} />
+            <MetaCard
+              icon={<Radio className="h-4 w-4 text-[var(--accent-blue)]" />}
+              label="Style"
+              value={style}
+            />
+            <MetaCard
+              icon={<Timer className="h-4 w-4 text-[var(--accent-amber)]" />}
+              label="Duration"
+              value={duration}
+            />
+            <MetaCard
+              icon={<Globe className="h-4 w-4 text-[var(--accent-green)]" />}
+              label="Language"
+              value={language}
+            />
           </div>
 
-          <ScriptTeleprompter title={`${durations.find((item) => item.key === duration)?.label ?? duration} · ${styles.find((item) => item.key === style)?.label ?? style}`} text={result?.script ?? ""} />
+          <ScriptTeleprompter
+            title={`${durations.find((item) => item.key === duration)?.label ?? duration} · ${styles.find((item) => item.key === style)?.label ?? style}`}
+            text={result?.script ?? ""}
+          />
 
           {result?.disclaimer && (
             <div className="card text-xs leading-relaxed text-[var(--text-muted)]">
@@ -158,11 +183,21 @@ function Segmented<T extends string>({
   );
 }
 
-function StatusRow({ label, value, tone }: { label: string; value: string; tone?: "success" | "warning" }) {
+function StatusRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "warning";
+}) {
   return (
     <div className="flex items-center justify-between gap-3 text-xs">
       <span className="text-[var(--text-muted)]">{label}</span>
-      <span className={`min-w-0 truncate font-mono ${tone === "warning" ? "text-[var(--accent-amber)]" : tone === "success" ? "text-[var(--accent-green)]" : "text-[var(--text-secondary)]"}`}>
+      <span
+        className={`min-w-0 truncate font-mono ${tone === "warning" ? "text-[var(--accent-amber)]" : tone === "success" ? "text-[var(--accent-green)]" : "text-[var(--text-secondary)]"}`}
+      >
         {value}
       </span>
     </div>

@@ -29,6 +29,21 @@ describe("MockProvider", () => {
       expect(provider.meta.requiresApiKey).toBe(false);
       expect(provider.meta.tokenConfigured).toBe(false);
     });
+
+    it("declares full status and all capabilities", () => {
+      expect(provider.meta.status).toBe("full");
+      expect(provider.meta.capabilities).toBeDefined();
+      const caps = provider.meta.capabilities!;
+      expect(caps.upcomingMatches).toBe(true);
+      expect(caps.match).toBe(true);
+      expect(caps.team).toBe(true);
+      expect(caps.squad).toBe(true);
+      expect(caps.lineup).toBe(true);
+      expect(caps.matchStats).toBe(true);
+      expect(caps.h2h).toBe(true);
+      expect(caps.form).toBe(true);
+      expect(caps.prediction).toBe(true);
+    });
   });
 
   describe("fetchUpcomingMatches", () => {

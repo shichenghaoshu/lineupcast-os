@@ -74,4 +74,4 @@ def get_leagues() -> list[dict]:
 
 
 def get_league_by_id(league_id: str) -> dict | None:
-    return next((l for l in LEAGUES if l["id"] == league_id), None)
+    return next((league for league in LEAGUES if league["id"] == league_id), None)

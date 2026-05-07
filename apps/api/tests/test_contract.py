@@ -4,7 +4,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.main import app
+from app.config import get_settings
+from app.main import app, create_app
 
 
 DEMO_MATCH_ID = "demo-manchester-red-vs-shanghai-harbor"
@@ -28,7 +29,7 @@ async def test_healthz_and_readyz(client):
     data = ready.json()
     assert data["status"] in {"ready", "degraded"}
     assert data["model"]["available"] is True
-    assert data["provider"]["mode"] in {"mock", "external"}
+    assert data["provider"]["mode"] in {"mock", "model", "external"}
 
 
 @pytest.mark.asyncio
@@ -143,7 +144,7 @@ async def test_lineups_players_scripts_models_and_providers(client):
     assert model_backtest.json()["modelId"] == model_id
 
     provider_test = await client.post(
-        "/api/providers/test", json={"providerId": "mock-fixture-feed"}
+        "/api/providers/test", json={"providerId": "mock-provider"}
     )
     assert provider_test.status_code == 200
     assert provider_test.json()["ok"] is True
@@ -155,3 +156,76 @@ async def test_lineups_players_scripts_models_and_providers(client):
     logs = await client.get("/api/providers/logs")
     assert logs.status_code == 200
     assert logs.json()
+
+
+@pytest.mark.asyncio
+async def test_admin_token_auth(monkeypatch):
+    """When LINEUPCAST_ADMIN_TOKEN is set, POST endpoints require Bearer auth."""
+    monkeypatch.setenv("LINEUPCAST_ADMIN_TOKEN", "test-secret-token")
+    get_settings.cache_clear()
+    try:
+        test_app = create_app()
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            # GET endpoints remain public
+            health = await c.get("/healthz")
+            assert health.status_code == 200
+
+            matches = await c.get("/api/matches")
+            assert matches.status_code == 200
+
+            # POST without Authorization header → 401
+            resp = await c.post(
+                "/api/matches/import",
+                json={
+                    "matchId": "auth-test-import",
+                    "competition": "Auth Cup",
+                    "kickoff": "2026-05-06T20:00:00Z",
+                    "homeTeamId": "manchester-red",
+                    "awayTeamId": "shanghai-harbor",
+                },
+            )
+            assert resp.status_code == 401
+            detail = resp.json().get("detail", "")
+            assert "test-secret" not in detail
+            assert "token" not in detail.lower()
+
+            # POST with wrong token → 401
+            resp = await c.post(
+                "/api/matches/import",
+                json={
+                    "matchId": "auth-test-import",
+                    "competition": "Auth Cup",
+                    "kickoff": "2026-05-06T20:00:00Z",
+                    "homeTeamId": "manchester-red",
+                    "awayTeamId": "shanghai-harbor",
+                },
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+            assert resp.status_code == 401
+
+            # POST with valid token → success
+            resp = await c.post(
+                "/api/matches/import",
+                json={
+                    "matchId": "auth-test-import",
+                    "competition": "Auth Cup",
+                    "kickoff": "2026-05-06T20:00:00Z",
+                    "homeTeamId": "manchester-red",
+                    "awayTeamId": "shanghai-harbor",
+                },
+                headers={"Authorization": "Bearer test-secret-token"},
+            )
+            assert resp.status_code == 201
+
+            # Another POST endpoint also protected
+            resp = await c.post(f"/api/matches/{DEMO_MATCH_ID}/predict")
+            assert resp.status_code == 401
+
+            resp = await c.post(
+                f"/api/matches/{DEMO_MATCH_ID}/predict",
+                headers={"Authorization": "Bearer test-secret-token"},
+            )
+            assert resp.status_code == 200
+    finally:
+        get_settings.cache_clear()

@@ -14,9 +14,9 @@ export interface ModelCardMeta {
 /** Placeholder — model card rendering will be implemented by the prediction team. */
 export function getModelCard(): ModelCardMeta {
   return {
-    name: "LineupCast xG-Poisson v1",
+    name: "Dixon-Coles Time-Weighted Poisson",
     version: "0.1.0",
-    type: "Generalized linear model (Poisson regression)",
+    type: "Time-weighted Poisson score model",
     owner: "LineupCast OS community",
     license: "MIT",
     intendedUse: "Pre-match football outcome probability estimation",

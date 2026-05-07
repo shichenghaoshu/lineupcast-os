@@ -128,7 +128,12 @@ async def test_prediction(client):
     assert 0 <= data["confidence"] <= 1
     assert len(data["goalScorers"]) == 4
     assert len(data["cardRisks"]) == 4
-    assert len(data["models"]) == 3
+    assert len(data["models"]) >= 3
+    assert {model["reference"] for model in data["models"]} >= {
+        "docs/model-cards/dixon-coles.md",
+        "docs/model-cards/player-rating-adjustment.md",
+        "docs/model-cards/xg-share.md",
+    }
 
 
 @pytest.mark.asyncio
@@ -190,7 +195,11 @@ async def test_providers(client):
     resp = await client.get("/api/providers")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 4
+    assert len(data) == 6
     ids = [p["id"] for p in data]
-    assert "lineupcast-xgboost" in ids
-    assert "mock-fixture-feed" in ids
+    assert "mock-provider" in ids
+    assert "openfootball" in ids
+    assert "statsbomb-open-data" in ids
+    assert "football-data-org" in ids
+    assert "sportmonks" in ids
+    assert "api-football" in ids

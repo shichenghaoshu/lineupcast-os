@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.mock_data import PROVIDERS
 
 from .config import Settings, get_settings
+from .security import require_admin
 from . import services
 from .leagues import get_leagues, get_league_by_id
 from .schemas import (
@@ -85,7 +86,7 @@ def register_routes(api: FastAPI) -> None:
         response_model=MatchSummary,
         status_code=status.HTTP_201_CREATED,
     )
-    async def import_match(payload: MatchImportRequest) -> MatchSummary:
+    async def import_match(payload: MatchImportRequest, _: Settings = Depends(require_admin)) -> MatchSummary:
         return services.import_match(payload)
 
     @api.get("/api/teams/{team_id}", response_model=TeamDetail)
@@ -108,12 +109,12 @@ def register_routes(api: FastAPI) -> None:
         "/api/matches/{match_id}/lineups/refresh",
         response_model=LineupRefreshResponse,
     )
-    async def refresh_match_lineups(match_id: str) -> LineupRefreshResponse:
+    async def refresh_match_lineups(match_id: str, _: Settings = Depends(require_admin)) -> LineupRefreshResponse:
         return services.refresh_lineups(match_id)
 
     @api.post("/api/matches/{match_id}/predict", response_model=PredictionResponse)
     async def predict_match(
-        match_id: str, settings: Settings = Depends(get_settings)
+        match_id: str, settings: Settings = Depends(require_admin)
     ) -> PredictionResponse:
         return services.get_prediction(settings, match_id)
 
@@ -146,7 +147,7 @@ def register_routes(api: FastAPI) -> None:
     async def generate_match_script(
         match_id: str,
         payload: ScriptGenerateRequest | None = None,
-        settings: Settings = Depends(get_settings),
+        settings: Settings = Depends(require_admin),
     ) -> ScriptResponse:
         return services.generate_script(
             settings, match_id, payload or ScriptGenerateRequest()
@@ -160,13 +161,13 @@ def register_routes(api: FastAPI) -> None:
     async def translate_script(
         script_id: str,
         payload: ScriptTranslateRequest,
-        settings: Settings = Depends(get_settings),
+        settings: Settings = Depends(require_admin),
     ) -> ScriptResponse:
         return services.translate_script(settings, script_id, payload)
 
     @api.post("/api/matches/{match_id}/script", response_model=LegacyScriptResponse)
     async def generate_legacy_script(
-        match_id: str, settings: Settings = Depends(get_settings)
+        match_id: str, settings: Settings = Depends(require_admin)
     ) -> LegacyScriptResponse:
         script = services.generate_script(settings, match_id, ScriptGenerateRequest())
         return LegacyScriptResponse(
@@ -183,7 +184,7 @@ def register_routes(api: FastAPI) -> None:
 
     @api.post("/api/models/backtest", response_model=BacktestResponse)
     async def backtest_model(
-        payload: ModelBacktestRequest, settings: Settings = Depends(get_settings)
+        payload: ModelBacktestRequest, settings: Settings = Depends(require_admin)
     ) -> BacktestResponse:
         return services.backtest_model(settings, payload)
 
@@ -210,11 +211,11 @@ def register_routes(api: FastAPI) -> None:
         return [Provider(**provider) for provider in PROVIDERS]
 
     @api.post("/api/providers/test", response_model=ProviderTestResponse)
-    async def test_provider(payload: ProviderTestRequest) -> ProviderTestResponse:
+    async def test_provider(payload: ProviderTestRequest, _: Settings = Depends(require_admin)) -> ProviderTestResponse:
         return services.test_provider(payload)
 
     @api.post("/api/providers/sync", response_model=ProviderSyncResponse)
-    async def sync_providers() -> ProviderSyncResponse:
+    async def sync_providers(_: Settings = Depends(require_admin)) -> ProviderSyncResponse:
         return services.sync_providers()
 
     @api.get("/api/providers/logs", response_model=list[ProviderLog])

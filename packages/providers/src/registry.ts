@@ -1,6 +1,6 @@
 // @lineupcast/providers — provider registry and status lookup
 
-import type { Provider } from "@lineupcast/schema";
+import type { Provider, ProviderCapability } from "@lineupcast/schema";
 import type { DataProvider } from "./data-provider.js";
 import { MockProvider } from "./mock-provider.js";
 import {
@@ -38,9 +38,29 @@ export function listProviders(): Provider[] {
   return Array.from(providers.values()).map((p) => p.meta);
 }
 
-/** List only providers that are ready to use (token present or not required) */
+/** List only providers that are ready to use (token present or not required, not placeholder) */
 export function listReadyProviders(): Provider[] {
-  return listProviders().filter((p) => !p.requiresApiKey || p.tokenConfigured);
+  return listProviders().filter((p) => isProviderReady(p));
+}
+
+/** Check whether a provider is ready (not placeholder/needs-key, token OK) */
+export function isProviderReady(provider: Provider): boolean {
+  const status = provider.status ?? "full";
+  if (status === "placeholder" || status === "needs-key") return false;
+  if (provider.requiresApiKey && !provider.tokenConfigured) return false;
+  return true;
+}
+
+/**
+ * List providers that are ready AND support all the given capabilities.
+ * If no capabilities are requested, returns all ready providers.
+ */
+export function listProvidersByCapability(required: ProviderCapability[]): Provider[] {
+  return listProviders().filter((p) => {
+    if (!isProviderReady(p)) return false;
+    const caps = p.capabilities ?? {};
+    return required.every((c) => caps[c] === true);
+  });
 }
 
 /** Register a custom provider at runtime */

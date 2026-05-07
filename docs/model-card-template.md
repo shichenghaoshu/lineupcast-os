@@ -4,8 +4,8 @@
 
 ## Model Details
 
-- **Name:** LineupCast xG-Poisson v1
-- **Type:** Generalized linear model (Poisson regression)
+- **Name:** Dixon-Coles Time-Weighted Poisson
+- **Type:** Time-weighted Poisson score model with low-score adjustment
 - **Owner:** LineupCast OS community
 - **Version:** 0.1.0
 - **License:** MIT
@@ -20,9 +20,9 @@
 
 ## Training Data
 
-- Historical match results and xG from open sources (Football-Data.co.uk, FBref)
-- Coverage: top-5 European leagues, 2017–present
-- Features: rolling xG for/against, home/away split, H2H record, days since last match
+- Historical match results and open-data examples supplied by the user
+- Coverage: depends on the configured provider and user-held data rights
+- Features: attack strength, defense strength, home advantage, lineup integrity, recent score trend
 
 ## Model Architecture
 
@@ -32,11 +32,11 @@
 
 ## Evaluation
 
-| Metric | Value |
-|--------|-------|
-| Log-loss (test set) | TBD |
-| Brier score | TBD |
-| Calibration | TBD |
+| Metric              | Value |
+| ------------------- | ----- |
+| Log-loss (test set) | TBD   |
+| Brier score         | TBD   |
+| Calibration         | TBD   |
 
 ## Ethical Considerations
 

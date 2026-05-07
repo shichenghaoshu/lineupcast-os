@@ -245,6 +245,28 @@ export interface ScriptOutput {
 
 // ─── Provider System ─────────────────────────────────────────────────
 
+/** Individual capability a provider may support */
+export type ProviderCapability =
+  | "upcomingMatches"
+  | "match"
+  | "team"
+  | "squad"
+  | "lineup"
+  | "matchStats"
+  | "h2h"
+  | "form"
+  | "prediction";
+
+/** Capability map: true = fully implemented, false = not available */
+export type ProviderCapabilities = Partial<Record<ProviderCapability, boolean>>;
+
+/** Overall readiness status for UI/API consumers */
+export type ProviderStatus =
+  | "full" // all declared capabilities implemented and ready
+  | "partial" // some capabilities implemented
+  | "placeholder" // stub — no real data yet
+  | "needs-key"; // implemented but missing API key
+
 export interface Provider {
   id: string;
   name: string;
@@ -257,6 +279,10 @@ export interface Provider {
     requestsPerMinute: number;
     requestsPerDay?: number;
   };
+  /** Which data-fetching capabilities this provider supports */
+  capabilities?: ProviderCapabilities;
+  /** Overall implementation readiness — absent means "full" for backward compat */
+  status?: ProviderStatus;
 }
 
 export interface FieldMapping {

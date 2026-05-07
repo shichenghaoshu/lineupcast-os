@@ -132,7 +132,7 @@ def refresh_lineups(match_id: str) -> LineupRefreshResponse:
     return LineupRefreshResponse(
         matchId=match_id,
         status="refreshed",
-        provider="mock-fixture-feed",
+        provider="mock-provider",
         refreshedAt=now_utc(),
     )
 
@@ -159,7 +159,7 @@ def get_prediction(settings: Settings, match_id: str) -> PredictionResponse:
 
     # ── Try the real prediction bridge first ──────────────────────────────
     match = MATCHES.get(match_id)
-    if match is not None:
+    if match is not None and settings.provider_mode == "model":
         bridge_input = {
             "matchId": match_id,
             "homeTeam": match.get("homeTeam", {}),
@@ -261,9 +261,9 @@ def _script_body(language: ScriptLanguage, prediction: PredictionResponse) -> tu
         "as the leading scorer candidate."
     )
     line_zh = (
-        f"{prediction.modelName} 认为主队胜率为 {prediction.homeWin}%，预计 xG 为 "
+        f"根据 Dixon-Coles 与阵容修正模型，模型认为主队胜率为 {prediction.homeWin}%，预计 xG 为 "
         f"{prediction.expectedHomeGoals:.1f} 比 {prediction.expectedAwayGoals:.1f}。"
-        f"重点关注 {prediction.goalScorers[0].player} 的进球威胁。"
+        f"概率上更值得关注 {prediction.goalScorers[0].player} 的进球威胁。"
     )
     if language == ScriptLanguage.zh:
         return "赛前预测口播", line_zh
@@ -469,11 +469,43 @@ def translate_script(
 def list_models(settings: Settings) -> list[ModelInfo]:
     return [
         ModelInfo(
-            modelId="lineupcast-ensemble",
-            name=settings.prediction_model_name,
-            version=settings.prediction_model_version,
+            modelId="dixon-coles-poisson",
+            name="Dixon-Coles Time-Weighted Poisson",
+            version="1.0.0",
             provider="local-deterministic",
-            task="match-prediction",
+            task="match-outcome",
+            status="ready",
+        ),
+        ModelInfo(
+            modelId="player-rating-adjustment",
+            name="Player Rating Adjustment",
+            version="1.0.0",
+            provider="local-deterministic",
+            task="lineup-adjustment",
+            status="ready",
+        ),
+        ModelInfo(
+            modelId="xg-share",
+            name="xG Share Model",
+            version="1.0.0",
+            provider="local-deterministic",
+            task="goal-scorer-ranking",
+            status="ready",
+        ),
+        ModelInfo(
+            modelId="expected-booking-xb",
+            name="Expected Booking xB-inspired Model",
+            version="1.0.0",
+            provider="local-deterministic",
+            task="yellow-card-risk",
+            status="ready",
+        ),
+        ModelInfo(
+            modelId="simple-red-card-risk",
+            name="Simple Red Card Risk",
+            version="1.0.0",
+            provider="local-deterministic",
+            task="categorical-red-card-risk",
             status="ready",
         ),
         ModelInfo(
@@ -553,15 +585,15 @@ def sync_providers() -> ProviderSyncResponse:
 def provider_logs() -> list[ProviderLog]:
     return [
         ProviderLog(
-            providerId="mock-fixture-feed",
+            providerId="mock-provider",
             level="info",
-            message="Mock fixture feed ready.",
+            message="Mock Provider ready with deterministic demo match data.",
             createdAt=now_utc(),
         ),
         ProviderLog(
-            providerId="lineupcast-xgboost",
+            providerId="statsbomb-open-data",
             level="info",
-            message="Deterministic model check passed.",
+            message="StatsBomb Open Data adapter placeholder loaded; no token required for mock mode.",
             createdAt=now_utc(),
         ),
     ]
@@ -569,16 +601,20 @@ def provider_logs() -> list[ProviderLog]:
 
 def readiness(settings: Settings) -> ReadinessResponse:
     external_ready = settings.provider_mode != "external" or bool(settings.provider_api_key)
+    if settings.provider_mode == "mock":
+        provider_detail = "mock provider ready"
+    elif settings.provider_mode == "model":
+        provider_detail = "local TypeScript model bridge mode configured"
+    elif external_ready:
+        provider_detail = "external provider key configured"
+    else:
+        provider_detail = "external provider key missing"
     return ReadinessResponse(
         status="ready" if external_ready else "degraded",
         provider=ReadinessComponent(
             available=external_ready,
             mode=settings.provider_mode,
-            detail="mock provider ready"
-            if settings.provider_mode == "mock"
-            else "external provider key configured"
-            if external_ready
-            else "external provider key missing",
+            detail=provider_detail,
         ),
         model=ReadinessComponent(
             available=bool(settings.prediction_model_name),

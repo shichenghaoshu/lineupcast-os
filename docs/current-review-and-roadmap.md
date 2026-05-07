@@ -24,6 +24,10 @@ It is not yet production-grade football forecasting infrastructure. Production u
 - Fixed `@lineupcast/ai-script` ESM barrel exports so compiled Node imports resolve correctly.
 - Added and exported a bridge-safe `predictMatch()` wrapper for the API prediction subprocess.
 - Hardened default CORS behavior so wildcard origins do not also allow browser credentials.
+- Added provider capability/status metadata and capability-aware registry filtering.
+- Added optional `LINEUPCAST_ADMIN_TOKEN` protection for write/admin POST endpoints while preserving open local demo mode when unset.
+- Updated the API Docker image and compose build context so containerized API builds include Node and compiled TypeScript bridge packages.
+- Added CI smoke coverage for bridge scripts and API Docker image startup.
 
 ## Code Review Findings
 
@@ -31,27 +35,23 @@ It is not yet production-grade football forecasting infrastructure. Production u
 
 1. The real data layer is incomplete. `MockProvider` is the only provider that supports the full cockpit contract. Live providers still lack enough form, H2H, lineup, stats, and prediction inputs to power the full prediction workflow.
 2. API state is in module-level dictionaries for matches and scripts. This is acceptable for demo mode, but it loses data on restart and diverges under multi-worker deployment.
-3. Write/admin endpoints such as match import, provider sync, and provider test do not have authentication or authorization yet.
-4. The API Dockerfile still needs a production bridge strategy. It should either include Node plus built workspace packages or switch to a pure Python/HTTP model service boundary.
-5. Calibration reports are not yet release-grade. The backtest utilities exist, but league/season data snapshots and per-class calibration reports are still needed.
+3. Calibration reports are not yet release-grade. The backtest utilities exist, but league/season data snapshots and per-class calibration reports are still needed.
 
 ### Medium Priority
 
-1. Provider capability metadata is too coarse. The registry can say a provider is ready even when specific methods remain unimplemented.
-2. OpenFootball defaults to a fixed season path. Season should be configurable and failures should surface as provider status instead of silent empty lists.
-3. LLM provider fallbacks are intentionally resilient, but callers must surface `fallback: true` as degraded state instead of treating fallback content as a normal provider success.
-4. Frontend API types and backend Pydantic schemas are still manually duplicated. Shared contract generation would prevent drift like `style` versus `tone`.
-5. Overlay export is still closer to a renderer contract than a polished operator workflow. Scene selection, copyable absolute OBS URLs, and real PNG rendering remain open.
+1. OpenFootball defaults to a fixed season path. Season should be configurable and failures should surface as provider status instead of silent empty lists.
+2. LLM provider fallbacks are intentionally resilient, but callers must surface `fallback: true` as degraded state instead of treating fallback content as a normal provider success.
+3. Frontend API types and backend Pydantic schemas are still manually duplicated. Shared contract generation would prevent drift like `style` versus `tone`.
+4. Overlay export is still closer to a renderer contract than a polished operator workflow. Scene selection, copyable absolute OBS URLs, and real PNG rendering remain open.
+5. Docker bridge runtime is now covered in CI, but local Docker validation still depends on a running Docker daemon.
 
 ## Roadmap
 
 ### Near Term
 
-- Add provider capability and freshness metadata: fixtures, team, squad, lineup, match stats, form, H2H, prediction.
+- Add provider freshness metadata and expose it in API readiness/UI status.
 - Make provider failures visible in the data page and API readiness output.
-- Add subprocess bridge smoke tests for prediction and script generation in CI.
-- Update the API Dockerfile to include the bridge runtime or document it as API-only demo mode.
-- Add auth guards for write/admin endpoints before any shared deployment.
+- Add retry/fixture-based Docker smoke tests for local developer workflows.
 - Replace remaining hard-coded mock reads in dashboard/lineup/overlay screens with API-backed loaders and explicit demo badges.
 
 ### Mid Term

@@ -115,7 +115,7 @@ interface FDMResponse {
 const LEAGUE_CODES: Record<string, string> = {
   "premier-league": "PL",
   "la-liga": "PD",
-  "bundesliga": "BL1",
+  bundesliga: "BL1",
   "serie-a": "SA",
   "ligue-1": "FL1",
   "champions-league": "CL",
@@ -126,11 +126,18 @@ export class FootballDataOrgProvider extends BaseAdapter {
   readonly meta: Provider = {
     id: "football-data-org",
     name: "football-data.org",
-    description: "Free tier available. Provides fixtures, standings, and match data for major European leagues.",
+    description:
+      "Free tier available. Provides fixtures, standings, and match data for major European leagues.",
     baseUrl: "https://api.football-data.org/v4",
     requiresApiKey: true,
     tokenConfigured: !!process.env["FOOTBALL_DATA_ORG_TOKEN"],
     rateLimit: { requestsPerMinute: 10 },
+    status: !!process.env["FOOTBALL_DATA_ORG_TOKEN"] ? "partial" : "needs-key",
+    capabilities: {
+      upcomingMatches: true,
+      match: true,
+      team: true,
+    },
   };
 
   private get token(): string {
@@ -152,8 +159,20 @@ export class FootballDataOrgProvider extends BaseAdapter {
       id: `fdm-${m.id}`,
       homeTeamId: `fdm-team-${m.homeTeam.id}`,
       awayTeamId: `fdm-team-${m.awayTeam.id}`,
-      homeTeam: { id: `fdm-team-${m.homeTeam.id}`, name: m.homeTeam.name, shortName: m.homeTeam.shortName || m.homeTeam.tla, league, crest: m.homeTeam.crest },
-      awayTeam: { id: `fdm-team-${m.awayTeam.id}`, name: m.awayTeam.name, shortName: m.awayTeam.shortName || m.awayTeam.tla, league, crest: m.awayTeam.crest },
+      homeTeam: {
+        id: `fdm-team-${m.homeTeam.id}`,
+        name: m.homeTeam.name,
+        shortName: m.homeTeam.shortName || m.homeTeam.tla,
+        league,
+        crest: m.homeTeam.crest,
+      },
+      awayTeam: {
+        id: `fdm-team-${m.awayTeam.id}`,
+        name: m.awayTeam.name,
+        shortName: m.awayTeam.shortName || m.awayTeam.tla,
+        league,
+        crest: m.awayTeam.crest,
+      },
       kickoff: m.utcDate,
       league,
       venue: "",
@@ -175,12 +194,23 @@ export class FootballDataOrgProvider extends BaseAdapter {
       id: `fdm-${data.id}`,
       homeTeamId: `fdm-team-${data.homeTeam.id}`,
       awayTeamId: `fdm-team-${data.awayTeam.id}`,
-      homeTeam: { id: `fdm-team-${data.homeTeam.id}`, name: data.homeTeam.name, shortName: data.homeTeam.shortName || data.homeTeam.tla, league },
-      awayTeam: { id: `fdm-team-${data.awayTeam.id}`, name: data.awayTeam.name, shortName: data.awayTeam.shortName || data.awayTeam.tla, league },
+      homeTeam: {
+        id: `fdm-team-${data.homeTeam.id}`,
+        name: data.homeTeam.name,
+        shortName: data.homeTeam.shortName || data.homeTeam.tla,
+        league,
+      },
+      awayTeam: {
+        id: `fdm-team-${data.awayTeam.id}`,
+        name: data.awayTeam.name,
+        shortName: data.awayTeam.shortName || data.awayTeam.tla,
+        league,
+      },
       kickoff: data.utcDate,
       league,
       venue: "",
-      status: data.status === "FINISHED" ? "finished" : data.status === "IN_PLAY" ? "live" : "scheduled",
+      status:
+        data.status === "FINISHED" ? "finished" : data.status === "IN_PLAY" ? "live" : "scheduled",
       homeScore: data.homeTeam.score ?? undefined,
       awayScore: data.awayTeam.score ?? undefined,
     };
@@ -229,6 +259,10 @@ export class OpenFootballProvider extends BaseAdapter {
     baseUrl: "https://raw.githubusercontent.com/openfootball/football.json/master",
     requiresApiKey: false,
     tokenConfigured: false,
+    status: "partial",
+    capabilities: {
+      upcomingMatches: true,
+    },
   };
 
   async fetchUpcomingMatches(league: string): Promise<Match[]> {
@@ -241,7 +275,9 @@ export class OpenFootballProvider extends BaseAdapter {
       const matches: Match[] = [];
       for (const round of data.rounds) {
         for (const m of round.matches) {
-          const id = `of-${data.name}-${round.name}-${m.team1}-${m.team2}`.replace(/\s+/g, "-").toLowerCase();
+          const id = `of-${data.name}-${round.name}-${m.team1}-${m.team2}`
+            .replace(/\s+/g, "-")
+            .toLowerCase();
           matches.push({
             id,
             homeTeamId: `of-${m.team1.replace(/\s+/g, "-").toLowerCase()}`,
@@ -287,7 +323,7 @@ interface AFResponse {
 const AF_LEAGUE_IDS: Record<string, number> = {
   "premier-league": 39,
   "la-liga": 140,
-  "bundesliga": 78,
+  bundesliga: 78,
   "serie-a": 135,
   "ligue-1": 61,
   "champions-league": 2,
@@ -303,6 +339,13 @@ export class ApiFootballProvider extends BaseAdapter {
     requiresApiKey: true,
     tokenConfigured: !!process.env["API_FOOTBALL_KEY"],
     rateLimit: { requestsPerMinute: 10, requestsPerDay: 100 },
+    status: !!process.env["API_FOOTBALL_KEY"] ? "partial" : "needs-key",
+    capabilities: {
+      upcomingMatches: true,
+      match: true,
+      team: true,
+      squad: true,
+    },
   };
 
   private get headers(): Record<string, string> {
@@ -326,8 +369,20 @@ export class ApiFootballProvider extends BaseAdapter {
       id: `af-${f.fixture.id}`,
       homeTeamId: `af-team-${f.teams.home.id}`,
       awayTeamId: `af-team-${f.teams.away.id}`,
-      homeTeam: { id: `af-team-${f.teams.home.id}`, name: f.teams.home.name, shortName: f.teams.home.code, league, crest: f.teams.home.logo },
-      awayTeam: { id: `af-team-${f.teams.away.id}`, name: f.teams.away.name, shortName: f.teams.away.code, league, crest: f.teams.away.logo },
+      homeTeam: {
+        id: `af-team-${f.teams.home.id}`,
+        name: f.teams.home.name,
+        shortName: f.teams.home.code,
+        league,
+        crest: f.teams.home.logo,
+      },
+      awayTeam: {
+        id: `af-team-${f.teams.away.id}`,
+        name: f.teams.away.name,
+        shortName: f.teams.away.code,
+        league,
+        crest: f.teams.away.logo,
+      },
       kickoff: f.fixture.date,
       league,
       venue: "",
@@ -351,8 +406,18 @@ export class ApiFootballProvider extends BaseAdapter {
       id: `af-${f.fixture.id}`,
       homeTeamId: `af-team-${f.teams.home.id}`,
       awayTeamId: `af-team-${f.teams.away.id}`,
-      homeTeam: { id: `af-team-${f.teams.home.id}`, name: f.teams.home.name, shortName: f.teams.home.code, league },
-      awayTeam: { id: `af-team-${f.teams.away.id}`, name: f.teams.away.name, shortName: f.teams.away.code, league },
+      homeTeam: {
+        id: `af-team-${f.teams.home.id}`,
+        name: f.teams.home.name,
+        shortName: f.teams.home.code,
+        league,
+      },
+      awayTeam: {
+        id: `af-team-${f.teams.away.id}`,
+        name: f.teams.away.name,
+        shortName: f.teams.away.code,
+        league,
+      },
       kickoff: f.fixture.date,
       league,
       venue: "",
@@ -383,7 +448,9 @@ export class ApiFootballProvider extends BaseAdapter {
   async fetchSquad(teamId: string): Promise<Player[]> {
     const id = teamId.replace("af-team-", "");
     const data = await fetchJson<{
-      response: { players: { id: number; name: string; age: number; nationality: string; position: string }[] }[];
+      response: {
+        players: { id: number; name: string; age: number; nationality: string; position: string }[];
+      }[];
     }>(
       `https://v3.football.api-sports.io/players/squads?team=${id}`,
       this.headers,
@@ -413,6 +480,8 @@ export class StatsBombProvider extends BaseAdapter {
     baseUrl: "https://raw.githubusercontent.com/statsbomb/open-data/master",
     requiresApiKey: false,
     tokenConfigured: false,
+    status: "placeholder",
+    capabilities: {},
   };
 }
 
@@ -428,5 +497,7 @@ export class SportmonksProvider extends BaseAdapter {
     requiresApiKey: true,
     tokenConfigured: !!process.env["SPORTMONKS_API_TOKEN"],
     rateLimit: { requestsPerMinute: 30 },
+    status: "placeholder",
+    capabilities: {},
   };
 }

@@ -1,6 +1,6 @@
 # Local Docker Deployment
 
-This project can run locally with Docker Compose without a PostgreSQL service by default. The API currently serves demo data and the web app connects to it through `NEXT_PUBLIC_API_URL`.
+The Docker Compose setup builds the API image from the repository root so it can include compiled TypeScript bridge packages alongside the Python service. No PostgreSQL is required by default.
 
 ## Prerequisites
 
@@ -12,12 +12,33 @@ cp .env.example .env
 docker compose up --build
 ```
 
+## Build Context
+
+The API Dockerfile uses the **repository root** as its build context (`context: .`), not `apps/api/`. This is required because the multi-stage build needs access to:
+
+- `pnpm-lock.yaml` and workspace manifests at the root
+- `packages/schema`, `packages/hf`, `packages/prediction`, `packages/ai-script` source and `tsconfig.base.json`
+
+The first stage installs Node.js dependencies and compiles the TypeScript packages with `tsc`. The second stage copies the Node binary and built `dist/` directories into the Python runtime image.
+
+If you build the image manually, always run from the repo root:
+
+```bash
+docker build -f apps/api/Dockerfile -t lineupcast-api .
+```
+
+## Bridge Support
+
+The API container includes Node.js and the compiled bridge packages (`@lineupcast/prediction`, `@lineupcast/ai-script`). This enables the Python-to-TypeScript bridge scripts (`predict.mjs`, `generate-script.mjs`) to run inside the container for live predictions and script generation.
+
+When `LINEUPCAST_PROVIDER_MODE` is set to `model`, the API uses the bridge to call the Dixon-Coles prediction engine and the deterministic script generator. In `mock` mode (the default), the API serves demo data without invoking Node.
+
 ## Services
 
-| Service | Default URL | Notes |
-| --- | --- | --- |
-| API | `http://localhost:8000` | FastAPI service from `apps/api`. |
-| Web | `http://localhost:3000` | Next.js service from `apps/web`. |
+| Service | Default URL             | Notes                                                    |
+| ------- | ----------------------- | -------------------------------------------------------- |
+| API     | `http://localhost:8000` | FastAPI service from `apps/api`, built with Node bridge. |
+| Web     | `http://localhost:3000` | Next.js service from `apps/web`.                         |
 
 Override ports in `.env`:
 

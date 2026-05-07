@@ -47,3 +47,48 @@ jobs:
       - name: Smoke check — import API module
         working-directory: apps/api
         run: python -c "from src.index import app; print('FastAPI app loaded OK')"
+
+  bridge-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build bridge packages
+        run: |
+          pnpm --filter @lineupcast/schema build
+          pnpm --filter @lineupcast/hf build
+          pnpm --filter @lineupcast/prediction build
+          pnpm --filter @lineupcast/ai-script build
+      - name: Smoke check — predict.mjs
+        working-directory: apps/api
+        run: |
+          echo '{"matchId":"ci","homeTeam":{"name":"A"},"awayTeam":{"name":"B"}}' | node scripts/predict.mjs
+      - name: Smoke check — generate-script.mjs
+        working-directory: apps/api
+        run: |
+          echo '{"match":{"id":"ci","homeTeamId":"a","awayTeamId":"b","kickoff":"2026-01-01T00:00:00Z","league":"Test","status":"scheduled"},"lineups":{"matchId":"ci","home":{"teamId":"a","teamName":"A","formation":"4-3-3","players":[{"number":1,"name":"GK","position":"GK","role":"GK","age":25,"nationality":"XX","recentRating":7,"xGLast5":0,"shotsLast5":0,"assistsLast5":0,"foulsPer90":0.1,"yellowCardsLast10":0,"vaepAttack":0,"vaepDefense":0.7,"commentaryNote":"","coordinates":{"x":5,"y":50}}]},"away":{"teamId":"b","teamName":"B","formation":"4-4-2","players":[{"number":1,"name":"GK","position":"GK","role":"GK","age":25,"nationality":"XX","recentRating":7,"xGLast5":0,"shotsLast5":0,"assistsLast5":0,"foulsPer90":0.1,"yellowCardsLast10":0,"vaepAttack":0,"vaepDefense":0.7,"commentaryNote":"","coordinates":{"x":95,"y":50}}]}},"prediction":{"matchId":"ci","homeWin":0.45,"draw":0.26,"awayWin":0.29,"expectedHomeGoals":1.6,"expectedAwayGoals":1.2,"confidence":"medium"},"goalScorers":[{"player":"GK","team":"A","probability":5}],"cardRisks":[],"style":"professional","duration":"30s"}' | node scripts/generate-script.mjs
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API Docker image
+        run: docker build -f apps/api/Dockerfile -t lineupcast-api:ci .
+      - name: Smoke check — container starts and responds
+        run: |
+          docker run -d --name api-test -p 8000:8000 lineupcast-api:ci
+          for i in {1..20}; do
+            if curl -sf http://localhost:8000/healthz; then
+              docker stop api-test
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs api-test
+          docker stop api-test
+          exit 1
